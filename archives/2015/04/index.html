@@ -4,7 +4,7 @@
 <head>
   <meta charset="UTF-8">
   
-    <title>Yaxin</title>
+    <title>V2EX</title>
     <meta name="viewport" content="width=device-width, initial-scale=1,user-scalable=no">
     
     <meta name="author" content="yibaini">
@@ -13,16 +13,16 @@
     
     <meta name="description">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Yaxin">
-<meta property="og:url" content="http://www.yaxin.co/archives/2015/04/index.html">
-<meta property="og:site_name" content="Yaxin">
+<meta property="og:title" content="V2EX">
+<meta property="og:url" content="http://www.v2ex.io/archives/2015/04/index.html">
+<meta property="og:site_name" content="V2EX">
 <meta property="og:description">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="Yaxin">
+<meta name="twitter:title" content="V2EX">
 <meta name="twitter:description">
 
     
-    <link rel="alternative" href="/atom.xml" title="Yaxin" type="application/atom+xml">
+    <link rel="alternative" href="/atom.xml" title="V2EX" type="application/atom+xml">
     
     
     <link rel="icon" href="/img/favicon.ico">
@@ -36,10 +36,15 @@
 
     <body>
       <header>
-        <div>
+        
+<div>
 		
+			<div id="imglogo">
+				<a href="/"><img src="/img/logo.png" alt="V2EX" title="V2EX"/></a>
+			</div>
+			
 			<div id="textlogo">
-				<h1 class="site-name"><a href="/" title="Yaxin">Yaxin</a></h1>
+				<h1 class="site-name"><a href="/" title="V2EX">V2EX</a></h1>
 				<h2 class="blog-motto"></h2>
 			</div>
 			<div class="navbar"><a class="navbutton navmobile" href="#" title="菜单">
@@ -59,7 +64,7 @@
 					<form class="search" action="//google.com/search" method="get" accept-charset="utf-8">
 						<label>Search</label>
 						<input type="search" id="search" name="q" autocomplete="off" maxlength="20" placeholder="搜索" />
-						<input type="hidden" name="q" value="site:www.yaxin.co">
+						<input type="hidden" name="q" value="site:www.v2ex.io">
 					</form>
 					
 					</li>
@@ -134,7 +139,7 @@
 		<p class="copyright">
 		Powered by <a href="http://hexo.io" target="_blank" title="hexo">hexo</a> and Theme by <a href="https://github.com/wuchong/jacman" target="_blank" title="Jacman">Jacman</a> © 2015 
 		
-		<a href="http://www.yaxin.co/about" target="_blank" title="yibaini">yibaini</a>
+		<a href="/about" target="_blank" title="yibaini">yibaini</a>
 		
 		
 		</p>
@@ -197,6 +202,27 @@ $(document).ready(function(){
 
 
 
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+$(document).ready(function(){ 
+  $('.article-content').each(function(i){
+    $(this).find('img').each(function(){
+      if ($(this).parent().hasClass('fancybox')) return;
+      var alt = this.alt;
+      if (alt) $(this).after('<span class="caption">' + alt + '</span>');
+      $(this).wrap('<a href="' + this.src + '" title="' + alt + '" class="fancybox"></a>');
+    });
+    $(this).find('.fancybox').each(function(){
+      $(this).attr('rel', 'article' + i);
+    });
+  });
+  if($.fancybox){
+    $('.fancybox').fancybox();
+  }
+}); 
+</script>
 
 
 
