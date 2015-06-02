@@ -4,22 +4,40 @@
 <head>
   <meta charset="UTF-8">
   
-    <title>V2EX</title>
+    <title>分布式一致性算法及日志实践 | V2EX</title>
     <meta name="viewport" content="width=device-width, initial-scale=1,user-scalable=no">
     
     <meta name="author" content="yibaini">
     
 
     
-    <meta name="description">
-<meta property="og:type" content="website">
-<meta property="og:title" content="V2EX">
-<meta property="og:url" content="http://www.v2ex.io/index.html">
+    <meta name="description" content="背景：与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年之久，目前还在持续，版本无穷无尽啊…啊…啊…
+
+
+
+Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。
+
+关于一致性算法的应用场景，@Tim Yang在博文Paxos在大型系统中常见的应用场景有详细的总结，个人理解">
+<meta property="og:type" content="article">
+<meta property="og:title" content="分布式一致性算法及日志实践">
+<meta property="og:url" content="http://www.v2ex.io/2015/05/31/consensus-algorithm/index.html">
 <meta property="og:site_name" content="V2EX">
-<meta property="og:description">
+<meta property="og:description" content="背景：与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年之久，目前还在持续，版本无穷无尽啊…啊…啊…
+
+
+
+Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。
+
+关于一致性算法的应用场景，@Tim Yang在博文Paxos在大型系统中常见的应用场景有详细的总结，个人理解">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="V2EX">
-<meta name="twitter:description">
+<meta name="twitter:title" content="分布式一致性算法及日志实践">
+<meta name="twitter:description" content="背景：与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年之久，目前还在持续，版本无穷无尽啊…啊…啊…
+
+
+
+Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。
+
+关于一致性算法的应用场景，@Tim Yang在博文Paxos在大型系统中常见的应用场景有详细的总结，个人理解">
 
     
     <link rel="alternative" href="/atom.xml" title="V2EX" type="application/atom+xml">
@@ -73,12 +91,10 @@
 </div>
     </header>
     <div id="container">
-      <div id="main">
-
-   
-    
-    <article class="post-expand post" itemprop="articleBody"> 
-        <header class="article-info clearfix">
+      <div id="main" class="post" itemscope itemprop="blogPost">
+  
+	<article itemprop="articleBody"> 
+		<header class="article-info clearfix">
   <h1 itemprop="name">
     
       <a href="/2015/05/31/consensus-algorithm/" title="分布式一致性算法及日志实践" itemprop="url">分布式一致性算法及日志实践</a>
@@ -92,9 +108,16 @@
     
   </p>
 </header>
-    <div class="article-content">
-        
-        <blockquote>
+	<div class="article-content">
+		
+		<div id="toc" class="toc-article">
+			<strong class="toc-title">文章目录</strong>
+		
+			<ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#一致性算法"><span class="toc-number">1.</span> <span class="toc-text">一致性算法</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#方案设计(概述)"><span class="toc-number">1.1.</span> <span class="toc-text">方案设计(概述)</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#方案实现"><span class="toc-number">1.2.</span> <span class="toc-text">方案实现</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#性能"><span class="toc-number">1.3.</span> <span class="toc-text">性能</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#日志实践"><span class="toc-number">2.</span> <span class="toc-text">日志实践</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#经验总结："><span class="toc-number">3.</span> <span class="toc-text">经验总结：</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#后记"><span class="toc-number">4.</span> <span class="toc-text">后记</span></a></li></ol>
+		
+		</div>
+		
+		<blockquote>
 <p><strong>背景</strong>：<br>与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年之久，目前还在持续，版本无穷无尽啊…啊…啊…</p>
 </blockquote>
 <hr>
@@ -162,14 +185,9 @@
 <blockquote>
 <p><a href="http://raftconsensus.github.io/" target="_blank" rel="external">Raft</a> 作者<a href="https://twitter.com/ongardie" target="_blank" rel="external">@Diego Ongaro</a> 也是马不停蹄，博士毕业不久就发布了类 <a href="http://research.google.com/archive/chubby.html" target="_blank" rel="external">Chubby</a>、<a href="https://zookeeper.apache.org/" target="_blank" rel="external">ZooKeeper</a> 以及 <a href="https://sourcegraph.com/blog/118135010314" target="_blank" rel="external">etcd</a> 的协调服务程序 <a href="https://sourcegraph.com/github.com/coreos/etcd" target="_blank" rel="external">LogCabin</a>，包含了Raft的C++实现，<strong>作者自信其可以直接在生产环境使用</strong>，后面有空要好好研究下。另外， <a href="https://sourcegraph.com/github.com/coreos/etcd" target="_blank" rel="external">etcd</a>  是一个用于配置共享和服务发现的高可用键值存储，是CoreOS的核心组件，包含了Raft的Go语言实现。CoreOS有Google、Red Hat及VMware这样的大厂撑腰，在与Docker竞争时将来也许会有更多的话语权。</p>
 </blockquote>
-
-        
-        
-        <p class="article-more-link">
-          
-       </p>
-    </div>
-    <footer class="article-footer clearfix">
+  
+	</div>
+		<footer class="article-footer clearfix">
 <div class="article-catetags">
 
 
@@ -182,80 +200,43 @@
 
 
 
-
-<div class="comments-count">
+	<div class="article-share" id="share">
 	
-</div>
+	  <div data-url="http://www.v2ex.io/2015/05/31/consensus-algorithm/" data-title="分布式一致性算法及日志实践 | V2EX" data-tsina="null" class="share clearfix">
+	  </div>
+	
+	</div>
+
 
 </footer>
 
-
-    </article>
-
-
-
-
-
-
-   
-    
-    <article class="post-expand post" itemprop="articleBody"> 
-        <header class="article-info clearfix">
-  <h1 itemprop="name">
-    
-      <a href="/2015/04/05/雅馨招待所/" title="雅馨招待所" itemprop="url">雅馨招待所</a>
-  </h1>
-  <p class="article-author">By
-       
-		<a href="/about" title="yibaini" target="_blank" itemprop="author">yibaini</a>
-		
-  <p class="article-time">
-    <time datetime="2015-04-05T05:55:23.000Z" itemprop="datePublished"> 发表于 2015-04-05</time>
-    
-  </p>
-</header>
-    <div class="article-content">
-        
-        <p>亲爱的小伙伴们，欢迎访问<a href="http://www.v2ex.io/2015/04/05/雅馨招待所/" target="_blank" rel="external">雅馨招待所</a> ，这里会不定期发布大家息息相关的信息。感谢您的关注:)</p>
-<h2 id="微信公众号">微信公众号</h2><h3 id="Yax-inn_『雅馨招待所』">Yax-inn 『雅馨招待所』</h3><p>扫一扫关注：<br><img src="http://7vzrdf.com1.z0.glb.clouddn.com/qrcode_for_yx.jpg" alt=""></p>
-<h2 id="详细信息">详细信息</h2><h3 id="★★★雅馨招待所★★★">★★★雅馨招待所★★★</h3><ul>
-<li>座机：029-85843958</li>
-<li>手机：13629244107</li>
-<li>地址：陕西省西安市长安区文苑南路小居安村北二街25号雅馨招待所（西北大学南校区&amp;外语学院南校区）</li>
-</ul>
-
-        
-        
-        <p class="article-more-link">
-          
-       </p>
-    </div>
-    <footer class="article-footer clearfix">
-<div class="article-catetags">
-
-
-</div>
-
-
-
-
-<div class="comments-count">
+   	       
+	</article>
 	
+<nav class="article-nav clearfix">
+ 
+
+<div class="next">
+<a href="/2015/04/05/雅馨招待所/"  title="雅馨招待所">
+ <strong>下一篇：</strong><br/> 
+ <span>雅馨招待所
+</span>
+</a>
 </div>
 
-</footer>
+</nav>
 
+	
 
-    </article>
-
-
-
-
-
-
-
-</div>
+</div>  
       <div class="openaside"><a class="navbutton" href="#" title="显示侧边栏"></a></div>
+
+  <div id="toc" class="toc-aside">
+  <strong class="toc-title">文章目录</strong>
+ 
+ <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#一致性算法"><span class="toc-number">1.</span> <span class="toc-text">一致性算法</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#方案设计(概述)"><span class="toc-number">1.1.</span> <span class="toc-text">方案设计(概述)</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#方案实现"><span class="toc-number">1.2.</span> <span class="toc-text">方案实现</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#性能"><span class="toc-number">1.3.</span> <span class="toc-text">性能</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#日志实践"><span class="toc-number">2.</span> <span class="toc-text">日志实践</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#经验总结："><span class="toc-number">3.</span> <span class="toc-text">经验总结：</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#后记"><span class="toc-number">4.</span> <span class="toc-text">后记</span></a></li></ol>
+ 
+  </div>
 
 <div id="asidepart">
 <div class="closeaside"><a class="closebutton" href="#" title="隐藏侧边栏"></a></div>
@@ -404,12 +385,69 @@ $(document).ready(function(){
       m.removeClass('moveMain');
       a.css('display', 'block').removeClass('fadeOut');
       o.css('display', 'none');
+      
+      $('#toc.toc-aside').css('display', 'none');
         
     }
   });
 });
 </script>
 
+<script type="text/javascript">
+$(document).ready(function(){ 
+  var ai = $('.article-content>iframe'),
+      ae = $('.article-content>embed'),
+      t  = $('#toc'),
+      ta = $('#toc.toc-aside'),
+      o  = $('.openaside'),
+      c  = $('.closeaside');
+  if(ai.length>0){
+    ai.wrap('<div class="video-container" />');
+  };
+  if(ae.length>0){
+   ae.wrap('<div class="video-container" />');
+  };
+  c.click(function(){
+    ta.css('display', 'block').addClass('fadeIn');
+  });
+  o.click(function(){
+    ta.css('display', 'none');
+  });
+  $(window).scroll(function(){
+    ta.css("top",Math.max(140,320-$(this).scrollTop()));
+  });
+});
+</script>
+
+
+<script type="text/javascript">
+$(document).ready(function(){ 
+  var $this = $('.share'),
+      url = $this.attr('data-url'),
+      encodedUrl = encodeURIComponent(url),
+      title = $this.attr('data-title'),
+      tsina = $this.attr('data-tsina'),
+      description = $this.attr('description');
+  var html = [
+  '<a href="#" class="overlay" id="qrcode"></a>',
+  '<div class="qrcode clearfix"><span>扫描二维码分享到微信朋友圈</span><a class="qrclose" href="#nothing"></a><strong>Loading...Please wait</strong><img id="qrcode-pic" data-src="http://s.jiathis.com/qrcode.php?url=' + encodedUrl + '"/></div>',
+  '<a href="https://www.facebook.com/sharer.php?u=' + encodedUrl + '" class="article-share-facebook" target="_blank" title="Facebook"></a>',
+  '<a href="https://twitter.com/intent/tweet?url=' + encodedUrl + '" class="article-share-twitter" target="_blank" title="Twitter"></a>',
+  '<a href="#qrcode" class="article-share-qrcode" title="微信"></a>',
+  '<a href="http://widget.renren.com/dialog/share?resourceUrl=' + encodedUrl + '&srcUrl=' + encodedUrl + '&title=' + title +'" class="article-share-renren" target="_blank" title="人人"></a>',
+  '<a href="http://service.weibo.com/share/share.php?title='+title+'&url='+encodedUrl +'&ralateUid='+ tsina +'&searchPic=true&style=number' +'" class="article-share-weibo" target="_blank" title="微博"></a>',
+  '<span title="Share to"></span>'
+  ].join('');
+  $this.append(html);
+  $('.article-share-qrcode').click(function(){
+    var imgSrc = $('#qrcode-pic').attr('data-src');
+    $('#qrcode-pic').attr('src', imgSrc);
+    $('#qrcode-pic').load(function(){
+        $('.qrcode strong').text(' ');
+    });
+  });
+});     
+</script>
 
 
 
@@ -470,4 +508,4 @@ $(document).ready(function(){
 <!-- Tiny_search End -->
 
   </body>
- </html>
+</html>
