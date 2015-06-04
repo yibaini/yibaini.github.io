@@ -1,10 +1,10 @@
 
-  <!DOCTYPE HTML>
+<!DOCTYPE HTML>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
   
-    <title>V2EX</title>
+    <title>search | V2EX</title>
     <meta name="viewport" content="width=device-width, initial-scale=1,user-scalable=no">
     
     <meta name="author" content="yibaini">
@@ -13,12 +13,12 @@
     
     <meta name="description">
 <meta property="og:type" content="website">
-<meta property="og:title" content="V2EX">
-<meta property="og:url" content="http://www.v2ex.io/tags/分布式/index.html">
+<meta property="og:title" content="search">
+<meta property="og:url" content="http://www.v2ex.io/search/index.html">
 <meta property="og:site_name" content="V2EX">
 <meta property="og:description">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="V2EX">
+<meta name="twitter:title" content="search">
 <meta name="twitter:description">
 
     
@@ -73,30 +73,25 @@
       </header>
       <div id="container">
         
-
-<div class="archive-title" >
-  <h2 class="tag-icon">分布式</h2>
-  
+<div  id="main" class="page">
+  <div id='cse' style='width:100%;text-align:center'>正在加载搜索结果，请稍等。</div>
 </div>
-<div id="main" class="archive-part clearfix">
-  <div id="archive-page">
-
-  <section class="post" itemscope itemprop="blogPost">
-  
-    <a href="/2015/05/31/consensus-algorithm/" title="分布式一致性算法及日志实践" itemprop="url">
-  
-
-    <time datetime="2015-05-31T05:55:23.000Z" itemprop="datePublished">2015-05-31</time>
-
-
-    <h1 itemprop="name">分布式一致性算法及日志实践</h1>
-
-  </a>
-</section>
-
-
-  </div>
-</div>
+<script src="http://www.google.com.hk/jsapi" type="text/javascript"></script>
+<script type="text/javascript">
+google.load('search', '1', {language : 'zh-CN',style: google.loader.themes.MINIMALIST});
+google.setOnLoadCallback(function(){
+  var customSearchControl = new google.search.CustomSearchControl('007526432093707093950:p7uqjvgtvya');
+  customSearchControl.setResultSetSize(google.search.Search.FILTERED_CSE_RESULTSET);
+  var options = new google.search.DrawOptions();
+  options.setAutoComplete(true);
+  customSearchControl.draw('cse', options);
+  var match = location.search.match(/q=([^&]*)(&|$)/);
+  if(match && match[1]){
+    var search = decodeURIComponent(match[1]); 
+    customSearchControl.execute(search);
+  }
+},true);
+</script>
 
       </div>
       <footer><div id="footer" >
