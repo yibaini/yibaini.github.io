@@ -20,6 +20,7 @@
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="V2EX">
 <meta name="twitter:description">
+<meta name="twitter:creator" content="@amateuros">
 
     
     <link rel="alternative" href="/atom.xml" title="V2EX" type="application/atom+xml">
@@ -45,7 +46,7 @@
 			
 			<div id="textlogo">
 				<h1 class="site-name"><a href="/" title="V2EX">V2EX</a></h1>
-				<h2 class="blog-motto"></h2>
+				<h2 class="blog-motto">way to explore</h2>
 			</div>
 			<div class="navbar"><a class="navbutton navmobile" href="#" title="菜单">
 			</a></div>
@@ -100,76 +101,23 @@
 <blockquote>
 <p>Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。</p>
 </blockquote>
-<p>关于一致性算法的应用场景，<a href="http://www.weibo.com/timyang" target="_blank" rel="external">@Tim Yang</a>在博文<a href="http://timyang.net/distributed/paxos-scenarios/" target="_blank" rel="external">Paxos在大型系统中常见的应用场景</a>有详细的总结，个人理解数据一致性保证的根基是<font color="red "><strong>带Commit语义的日志的一致性。</strong></font> ，数据的一致性基于快照以及日志重放来保证，像 <a href="https://zookeeper.apache.org/" target="_blank" rel="external">ZooKeeper™</a> 就是这么做的，和传统数据库由Write-Ahead Log机制来保证事物的原理是类似的。</p>
-<h2 id="一致性算法">一致性算法</h2><h3 id="方案设计(概述)">方案设计(概述)</h3><p>当初做设计时调研了无主的 <a href="https://www.cs.cmu.edu/~dga/papers/epaxos-sosp2013.pdf" target="_blank" rel="external">e-Paxos</a>(<a href="https://github.com/efficient/epaxos" target="_blank" rel="external">Github</a>)、广泛应用的<a href="https://zookeeper.apache.org/" target="_blank" rel="external">ZooKeeper™</a>、以及当时刚被RedHat收购的<a href="http://ceph.com/" target="_blank" rel="external">Ceph</a>/<a href="https://ceph.com/community/monitors-and-paxos-a-chat-with-joao/" target="_blank" rel="external">Monitors and Paxos, a chat with Joao Ceph</a>，还有一个就是某个产品已经实现的一个方案，看了源码，可以认为是Ceph Monitor的C语言版本，但是实现的比较拙劣，性能比较差，这个后面再讲。<br>通过几番与合作部门沟通，<font color="red"> <strong>我们确定最终的方案为优化的Multi-Paxos有主方案，并且选主由业务来做</strong> （<em>坑，后来的实践证明，这是一个严重失误，不做选主产生了很多问题</em>）。</font><br><strong>角色设计：</strong></p>
-<ul>
-<li>Leader（Master），与上层同主，负责处理所有上层业务读写操作</li>
-<li>Slave（Acceptor），参与协商，并同步应用日志到本节点上层业务</li>
-</ul>
-<p><strong>算法运行阶段设计：</strong></p>
-<ul>
-<li><strong>恢复</strong> 在此阶段Master收集日志达到集群最新最全（至少某个<code>安全区间</code>的要都有），并供所有其他落后的Slave节点学习，恢复阶段的完成标志着集群可以对外提供读写服务，主要是主；</li>
-<li><strong>协商</strong> 此为阶段算法运行常态，负责决议协商同步，消息驱动；</li>
-<li><strong>热重配</strong> 集群拓扑变更时所有节点Nodemap刷新，通过一次特殊协商达成；</li>
-</ul>
-<p><strong>运行部署设计</strong><br>以动态库的形式提供给上层配置数据库，运行时作为配置数据库进程的一个线程存在，逻辑上是Master+Slave的方式，节点个数为<strong>2N+1</strong>。</p>
-<blockquote>
-<p>有两个产品<strong>A</strong>和<strong>B</strong>使用我们的算法，要求也是差别蛮大：<strong>A</strong>要求All节点都达成一致，可以理解为退化成<strong>2PC</strong>了（如果有一个节点Fail就跪了，一致性倒是保证了，可用性却大打折扣，感觉从设计上CAP如何取舍他们还是没想清楚。另外，6块盘做RAID1提升可靠性，感觉有些过度设计，往往事与愿违，XXX老师拍的方案，无人敢质疑，也是醉了），在<strong>A</strong>产品中实现中增加了<strong>单节点和双节点</strong>的支持，并不完全满足节点数为<strong>2N+1</strong>的约束；<strong>B</strong>是常规的Majority节点达成一致就好，节点个数为<strong>2N+1</strong>。</p>
-</blockquote>
-<h3 id="方案实现">方案实现</h3><p>实现上日志的一致性通过epoch+version的方式来保证，只要有主变更，epoch增长，只要有新决议达成version增长。从目前来看，几乎所有的一致性算法都是选主+日志同步的流程，但是我们的方案Leader Election由上层来做了，这是所有恶梦的开始—-不保证日志最新的节点被选为主。</p>
-<ol>
-<li>在恢复流程中，如果新主子没有任何日志，为了使自己的日志成为集群最新最全，就得从其他节点那里学习，有可能从一个节点还学不全，得从多个节点学习，可以有两种方式：（1）Slave推送；（2）Master主动选择学习对象。（1）的方式可能会有大量的重复数据推送主，我们选择了（2）的方式，Master根据一定的策略去选择学习对象，直到自己的日志成为集群最新最全。<br>再说说前面提到的<code>安全区间</code>，如果某个节点落后太多，依靠算法恢复流程来跟其他节点同步速度无法保证，影响开工，所以在配置数据库层设置了一个是否做快照的阈值M，如果数据版本差异大于M，上层做数据快照；否则由我们算法来补齐日志并重放。<code>安全区间</code>是一个比阈值M稍大的值N，由于磁盘的限制，日志不可能一直保存，需要定期做清理，为了不影响其他节点学习所保留的最小日志区间就叫<code>安全区间</code>。前面的Master日志成为集群最新最全只需保证安全区间的日志都有就可以了。<blockquote>
-<p>因为新主无法保证日志最新，导致恢复流程异常复杂；如果选主是我们自己来做的话，这些问题都将不存在。</p>
-</blockquote>
-</li>
-<li>在协商流程中，为了提高吞吐量，采用了打包的策略，可以根据不同业务对响应时间的不同要求对打包个数量进行调整。</li>
-<li>重配就是新旧NodeMap共存一段时间，有个时间窗口，经过一轮特殊的协商将新NodeMap更新到集群中的协商参与节点。</li>
-</ol>
-<p>其他：</p>
-<ol>
-<li>为了减小网络闪断带来的影响，Master所有的消息都有超时 重发机制；对于Slave节点来说，定时器超时会走Catch-up学习流程；</li>
-<li>选主由上层来做，并且只有Master支持读写，并且Master比较恒定，算法未实现租约与心跳；</li>
-</ol>
-<h3 id="性能">性能</h3><p>测试环境1.5K SAS盘IOPS在180左右，当每次同步写盘100条决议（打包设置为100，大小为1K），从测试情况来看，单个IO耗时平均在90ms，吞吐量大概在：100 * 1000/90 = 1.1K，对上层应用来说，目前足够使用。如果对吞吐量要求更高的话，可以优化为更大量级的批量写（像Zookeeper那样的1000条批量写），吞吐量可以做到1.1W，但是平均时延会相应增加，对于系统来说，吞吐量与时延总是矛盾的，需要trade off。这个数据看起来跟Zookeeper的写2w+还是有不小差距，不过因为Zookeeper使用的是独立物理盘，性能会好不少。</p>
-<blockquote>
-<p>测试环境日志存储在非独立物理磁盘，从6块盘各划出一部分空间组软RAID 1，定制IO栈、驱动，平均IO时延在90ms左右，测试整体环境不太理想，上面的数据并不好看。</p>
-</blockquote>
-<h2 id="日志实践">日志实践</h2><p>关于日志，因为要保证一致性，所以必须同步落盘，在网络时延几乎可以忽略不计的情况下，<font color="red"><strong>日志落盘耗费的时间几乎就是所有的耗时</strong></font>，这块儿我们踩了大坑，甲方（我们私下自称乙方）拍下采用SQLite作为一致性日志的存储介质(之前我们使用的是leveldb，写性能要好不少，后来测试表明也不适合用作日志存储）。</p>
-<p>起初没有任何性能问题，因为业务压力不大，而且日志写的是SSD。但是当产品<strong>A</strong>从某个版本开始性能问题凸显，后来才知道配置数据库为了提升可靠性变更了存储方案：</p>
-<blockquote>
-<p>从原来的写SSD改为写6块盘组的软RAID1（6块盘中有SSD也有SAS盘，且都是各自从物理盘上划分一块空间虚拟出来，非独立物理磁盘），没错，是软RAID1，混合了SSD与SAS盘，总之是慢出你想象，经常是每写一次日志（一次SQLite插入/更新）耗时30s+… 当一个个致命问题单砸过来的时候，心中一万只草泥马奔腾而过啊…</p>
-</blockquote>
-<p>通过大量的实验以及测试分析，使用IO路径模块同事提供的手段，抓取每次写日志时产生的IO情况，最后发现如果使用SQLite，且以WAL模式打开使用，它的check-point机制会产生大量的串行读写IO，二三十个都不稀奇，而且从IO统计数据来看，单个IO的时延有三四秒以上的（这个也比较恐怖，不带这样高端的，都不好意思说），根因确定。<font color="red"><strong>事实证明SQLite极不宜用作日志存储。</strong></font></p>
-<p>最后的解决方案是：<font color="red"><strong>设计一套新的日志方案，直接写文件，IO要可控</strong></font>。<br>参考ZooKeeper、SQLite的WAL格式、MongoDB、Redis，我们设计了一套适用于目前方案的日志格式以及读写层代码，保证大多数情况下的日志写IO控制在1个左右，文件系统自身导致的少量多余IO目前还无法控制，日志写速度有了质的提升，根据压力不同总体提升在两倍到几十倍不等。如果能用上高大上的NVDIMM保电内存，再异步刷盘，速度还有很大提升空间。</p>
-<blockquote>
-<p>前面提到的某个产品实现的版本，性能不是太好，从源码来看，每个决议的日志会对应一个独立日志文件，猜测也是IO数比较多导致的。 </p>
-</blockquote>
-<h2 id="经验总结：">经验总结：</h2><ol>
-<li>定制日志文件，并且日志文件预分配大小，<em>fflush</em>之后使用<em>fdatasync</em>刷盘，可以减少一次由于文件大小改变时元数据更新产生的写IO；</li>
-<li>能合并写的数据，尽量一次写，比如文件头和第一条日志；</li>
-<li>日志增加完整性校验；</li>
-<li>软RAID少用，尤其是未掌握其运行机理的情况下。</li>
-</ol>
-<p>从原理上来讲，Paxos只适用于保证类似配置数据这样对时间不敏感数据的一致性，状态数据就算了，性能上不去。</p>
-<h2 id="后记">后记</h2><p>最后，如果重新来过，选主是绝对不能少的。近两年新出的 <a href="http://raftconsensus.github.io/" target="_blank" rel="external"><strong>Raft</strong></a> 算法看起来比较好理解，简单也是其最大的亮点，持续关注<font color="red"><strong>:)</strong></font></p>
-<p><strong>几篇不错的资料：</strong></p>
-<ol>
-<li><a href="http://www.thinkingyu.com/articles/Raft/" target="_blank" rel="external">Raft一致性算法分析与总结</a> （差不多为论文中文版）</li>
-<li><a href="http://xlambda.com/blog/2015/02/09/distrubuted-consensus-raft-and-other/" target="_blank" rel="external">分布式一致性，Raft以及其它</a> （Raft实践经验）</li>
-<li><a href="http://hedengcheng.com/?p=892" target="_blank" rel="external">数据一致性-分区可用性-性能——多副本强同步数据库系统实现之我见</a> （<a href="http://hedengcheng.com/" target="_blank" rel="external">登博</a> 出品，超级总结）</li>
-</ol>
-<blockquote>
-<p><a href="http://raftconsensus.github.io/" target="_blank" rel="external">Raft</a> 作者<a href="https://twitter.com/ongardie" target="_blank" rel="external">@Diego Ongaro</a> 也是马不停蹄，博士毕业不久就发布了类 <a href="http://research.google.com/archive/chubby.html" target="_blank" rel="external">Chubby</a>、<a href="https://zookeeper.apache.org/" target="_blank" rel="external">ZooKeeper</a> 以及 <a href="https://sourcegraph.com/blog/118135010314" target="_blank" rel="external">etcd</a> 的协调服务程序 <a href="https://sourcegraph.com/github.com/coreos/etcd" target="_blank" rel="external">LogCabin</a>，包含了Raft的C++实现，<strong>作者自信其可以直接在生产环境使用</strong>，后面有空要好好研究下。另外， <a href="https://sourcegraph.com/github.com/coreos/etcd" target="_blank" rel="external">etcd</a>  是一个用于配置共享和服务发现的高可用键值存储，是CoreOS的核心组件，同时也用于Google开源的容器集群管理系统<a href="http://kubernetes.io/" target="_blank" rel="external">Kubernetes</a>，用于服务发现、集群状态配置存储。 </p>
-</blockquote>
-
+<p>关于一致性算法的应用场景，<a href="http://www.weibo.com/timyang">@Tim Yang</a>在博文<a href="http://timyang.net/distributed/paxos-scenarios/">Paxos在大型系统中常见的应用场景</a>有详细的总结，个人理解数据一致性保证的根基是<font color="red "><strong>带Commit语义的日志的一致性。</strong></font> ，数据的一致性基于快照以及日志重放来保证，像 <a href="https://zookeeper.apache.org/">ZooKeeper™</a> 就是这么做的，和传统数据库由Write-Ahead Log机制来保证事物的原理是类似的。</p>
+<h2 id="一致性算法">一致性算法</h2><h3 id="方案设计(概述)">方案设计(概述)</h3><p>当初做设计时调研了无主的 <a href="https://www.cs.cmu.edu/~dga/papers/epaxos-sosp2013.pdf">e-Paxos</a>(<a href="https://github.com/efficient/epaxos">Github</a>)、广泛应用的<a href="https://zookeeper.apache.org/">ZooKeeper™</a>、以及当时刚被RedHat收购的<a href="http://ceph.com/">Ceph</a>/<a href="https://ceph.com/community/monitors-and-paxos-a-chat-with-joao/">Monitors and Paxos, a chat with Joao Ceph</a>，还有一个就是某个产品已经实现的一个方案，看了源码，可以认为是Ceph Monitor的C语言版本，但是实现的比较拙劣，性能比较差，这个后面再讲。<br>通过几番与合作部门沟通，<font color="red"> <strong>我们确定最终的方案为优化的Multi-Paxos有主方案，并且选主由业务来做</strong> （<em>坑，后来的实践证明，这是一个严重失误，不做选主产生了很多问题</em>）。</font><br>
         
         
         <p class="article-more-link">
+          
+            <a href="/2015/05/31/consensus-algorithm/#more">阅读更多</a>
           
        </p>
     </div>
     <footer class="article-footer clearfix">
 <div class="article-catetags">
+
+<div class="article-categories">
+  <span></span>
+  <a class="article-category-link" href="/categories/分布式/">分布式</a>
+</div>
 
 
   <div class="article-tags">
@@ -183,6 +131,9 @@
 
 
 <div class="comments-count">
+	
+	  	<span></span>
+		<a href="/2015/05/31/consensus-algorithm/#comments" class="ds-thread-count comments-count-link" data-thread-key="2015/05/31/consensus-algorithm/" data-count-type="comments">&nbsp;</a>
 	
 </div>
 
@@ -215,22 +166,23 @@
 </header>
     <div class="article-content">
         
-        <p>亲爱的小伙伴们，欢迎访问<a href="http://www.v2ex.io/2015/04/05/雅馨招待所/" target="_blank" rel="external">雅馨招待所</a> ，这里会不定期发布大家息息相关的信息。感谢您的关注:)</p>
-<h2 id="微信公众号">微信公众号</h2><h3 id="Yax-inn_『雅馨招待所』">Yax-inn 『雅馨招待所』</h3><p>扫一扫关注：<br><img src="http://7vzrdf.com1.z0.glb.clouddn.com/qrcode_for_yx.jpg" alt=""></p>
-<h2 id="详细信息">详细信息</h2><ul>
-<li>座机：029-85843958</li>
-<li>手机：13629244107</li>
-<li>地址：陕西省西安市长安区文苑南路小居安村北二街25号雅馨招待所（西北大学南校区&amp;外语学院南校区）</li>
-</ul>
-
+        <p>亲爱的小伙伴们，欢迎访问<a href="http://www.v2ex.io/2015/04/05/雅馨招待所/">雅馨招待所</a> ，这里会不定期发布大家息息相关的信息。感谢您的关注:)</p>
+<h2 id="微信公众号">微信公众号</h2><h3 id="Yax-inn_『雅馨招待所』">Yax-inn 『雅馨招待所』</h3><p>扫一扫关注：<br><img src="http://7vzrdf.com1.z0.glb.clouddn.com/qrcode_for_yx.jpg" alt=""><br>
         
         
         <p class="article-more-link">
+          
+            <a href="/2015/04/05/雅馨招待所/#more">阅读更多</a>
           
        </p>
     </div>
     <footer class="article-footer clearfix">
 <div class="article-catetags">
+
+<div class="article-categories">
+  <span></span>
+  <a class="article-category-link" href="/categories/然并卵/">然并卵</a>
+</div>
 
 
 </div>
@@ -239,6 +191,9 @@
 
 
 <div class="comments-count">
+	
+	  	<span></span>
+		<a href="/2015/04/05/雅馨招待所/#comments" class="ds-thread-count comments-count-link" data-thread-key="2015/04/05/雅馨招待所/" data-count-type="comments">&nbsp;</a>
 	
 </div>
 
@@ -261,6 +216,21 @@
 <aside class="clearfix">
 
   
+<div class="categorieslist">
+	<p class="asidetitle">分类</p>
+		<ul>
+		
+		  
+			<li><a href="/categories/分布式/" title="分布式">分布式<sup>1</sup></a></li>
+		  
+		
+		  
+			<li><a href="/categories/然并卵/" title="然并卵">然并卵<sup>1</sup></a></li>
+		  
+		
+		</ul>
+</div>
+
 
   
 <div class="tagslist">
@@ -284,6 +254,16 @@
 			
 		
 		</ul>
+</div>
+
+
+  
+
+<div class="doubanshow">
+<p class="asidetitle">豆瓣秀</p>
+<div>
+<script type="text/javascript" src="http://www.douban.com/service/badge/AvatarJC/?show=collection&amp;n=12&amp;columns=3&amp;hidelogo=yes&amp;hideself=yes&amp;cat=book|movie" ></script>
+</div>
 </div>
 
 
@@ -334,10 +314,20 @@
 		<a href="https://github.com/yibaini" target="_blank" class="icon-github" title="github"></a>
 		
 		
+		<a href="http://stackoverflow.com/users/2426711" target="_blank" class="icon-stack-overflow" title="stackoverflow"></a>
+		
+		
+		<a href="https://twitter.com/amateuros" target="_blank" class="icon-twitter" title="twitter"></a>
 		
 		
 		
+		<a href="https://www.linkedin.com/in/denglee" target="_blank" class="icon-linkedin" title="linkedin"></a>
 		
+		
+		<a href="https://www.douban.com/people/AvatarJC" target="_blank" class="icon-douban" title="豆瓣"></a>
+		
+		
+		<a href="https://www.zhihu.com/people/yibaini" target="_blank" class="icon-zhihu" title="知乎"></a>
 		
 		
 		
@@ -407,6 +397,18 @@ $(document).ready(function(){
 
 
 
+
+<script type="text/javascript">
+  var duoshuoQuery = {short_name:"yibaini"};
+  (function() {
+    var ds = document.createElement('script');
+    ds.type = 'text/javascript';ds.async = true;
+    ds.src = '//static.duoshuo.com/embed.js';
+    ds.charset = 'UTF-8';
+    (document.getElementsByTagName('head')[0] 
+    || document.getElementsByTagName('body')[0]).appendChild(ds);
+  })();
+</script> 
 
 
 

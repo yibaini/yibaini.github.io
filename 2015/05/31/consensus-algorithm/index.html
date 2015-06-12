@@ -38,6 +38,7 @@ Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算�
 Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。
 
 关于一致性算法的应用场景，@Tim Yang在博文Paxos在大型系统中常见的应用场景有详细的总结，个人理解">
+<meta name="twitter:creator" content="@amateuros">
 
     
     <link rel="alternative" href="/atom.xml" title="V2EX" type="application/atom+xml">
@@ -63,7 +64,7 @@ Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算�
 			
 			<div id="textlogo">
 				<h1 class="site-name"><a href="/" title="V2EX">V2EX</a></h1>
-				<h2 class="blog-motto"></h2>
+				<h2 class="blog-motto">way to explore</h2>
 			</div>
 			<div class="navbar"><a class="navbutton navmobile" href="#" title="菜单">
 			</a></div>
@@ -124,7 +125,7 @@ Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算�
 <p>Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。</p>
 </blockquote>
 <p>关于一致性算法的应用场景，<a href="http://www.weibo.com/timyang" target="_blank" rel="external">@Tim Yang</a>在博文<a href="http://timyang.net/distributed/paxos-scenarios/" target="_blank" rel="external">Paxos在大型系统中常见的应用场景</a>有详细的总结，个人理解数据一致性保证的根基是<font color="red "><strong>带Commit语义的日志的一致性。</strong></font> ，数据的一致性基于快照以及日志重放来保证，像 <a href="https://zookeeper.apache.org/" target="_blank" rel="external">ZooKeeper™</a> 就是这么做的，和传统数据库由Write-Ahead Log机制来保证事物的原理是类似的。</p>
-<h2 id="一致性算法">一致性算法</h2><h3 id="方案设计(概述)">方案设计(概述)</h3><p>当初做设计时调研了无主的 <a href="https://www.cs.cmu.edu/~dga/papers/epaxos-sosp2013.pdf" target="_blank" rel="external">e-Paxos</a>(<a href="https://github.com/efficient/epaxos" target="_blank" rel="external">Github</a>)、广泛应用的<a href="https://zookeeper.apache.org/" target="_blank" rel="external">ZooKeeper™</a>、以及当时刚被RedHat收购的<a href="http://ceph.com/" target="_blank" rel="external">Ceph</a>/<a href="https://ceph.com/community/monitors-and-paxos-a-chat-with-joao/" target="_blank" rel="external">Monitors and Paxos, a chat with Joao Ceph</a>，还有一个就是某个产品已经实现的一个方案，看了源码，可以认为是Ceph Monitor的C语言版本，但是实现的比较拙劣，性能比较差，这个后面再讲。<br>通过几番与合作部门沟通，<font color="red"> <strong>我们确定最终的方案为优化的Multi-Paxos有主方案，并且选主由业务来做</strong> （<em>坑，后来的实践证明，这是一个严重失误，不做选主产生了很多问题</em>）。</font><br><strong>角色设计：</strong></p>
+<h2 id="一致性算法">一致性算法</h2><h3 id="方案设计(概述)">方案设计(概述)</h3><p>当初做设计时调研了无主的 <a href="https://www.cs.cmu.edu/~dga/papers/epaxos-sosp2013.pdf" target="_blank" rel="external">e-Paxos</a>(<a href="https://github.com/efficient/epaxos" target="_blank" rel="external">Github</a>)、广泛应用的<a href="https://zookeeper.apache.org/" target="_blank" rel="external">ZooKeeper™</a>、以及当时刚被RedHat收购的<a href="http://ceph.com/" target="_blank" rel="external">Ceph</a>/<a href="https://ceph.com/community/monitors-and-paxos-a-chat-with-joao/" target="_blank" rel="external">Monitors and Paxos, a chat with Joao Ceph</a>，还有一个就是某个产品已经实现的一个方案，看了源码，可以认为是Ceph Monitor的C语言版本，但是实现的比较拙劣，性能比较差，这个后面再讲。<br>通过几番与合作部门沟通，<font color="red"> <strong>我们确定最终的方案为优化的Multi-Paxos有主方案，并且选主由业务来做</strong> （<em>坑，后来的实践证明，这是一个严重失误，不做选主产生了很多问题</em>）。</font><br><a id="more"></a><br><strong>角色设计：</strong></p>
 <ul>
 <li>Leader（Master），与上层同主，负责处理所有上层业务读写操作</li>
 <li>Slave（Acceptor），参与协商，并同步应用日志到本节点上层业务</li>
@@ -189,6 +190,11 @@ Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算�
 		<footer class="article-footer clearfix">
 <div class="article-catetags">
 
+<div class="article-categories">
+  <span></span>
+  <a class="article-category-link" href="/categories/分布式/">分布式</a>
+</div>
+
 
   <div class="article-tags">
   
@@ -226,6 +232,10 @@ Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算�
 </nav>
 
 	
+<section id="comments" class="comment">
+	<div class="ds-thread" data-thread-key="2015/05/31/consensus-algorithm/" data-title="分布式一致性算法及日志实践" data-url="http://www.v2ex.io/2015/05/31/consensus-algorithm/"></div>
+</section>
+
 
 </div>  
       <div class="openaside"><a class="navbutton" href="#" title="显示侧边栏"></a></div>
@@ -242,6 +252,21 @@ Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算�
 <aside class="clearfix">
 
   
+<div class="categorieslist">
+	<p class="asidetitle">分类</p>
+		<ul>
+		
+		  
+			<li><a href="/categories/分布式/" title="分布式">分布式<sup>1</sup></a></li>
+		  
+		
+		  
+			<li><a href="/categories/然并卵/" title="然并卵">然并卵<sup>1</sup></a></li>
+		  
+		
+		</ul>
+</div>
+
 
   
 <div class="tagslist">
@@ -265,6 +290,16 @@ Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算�
 			
 		
 		</ul>
+</div>
+
+
+  
+
+<div class="doubanshow">
+<p class="asidetitle">豆瓣秀</p>
+<div>
+<script type="text/javascript" src="http://www.douban.com/service/badge/AvatarJC/?show=collection&amp;n=12&amp;columns=3&amp;hidelogo=yes&amp;hideself=yes&amp;cat=book|movie" ></script>
+</div>
 </div>
 
 
@@ -315,10 +350,20 @@ Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算�
 		<a href="https://github.com/yibaini" target="_blank" class="icon-github" title="github"></a>
 		
 		
+		<a href="http://stackoverflow.com/users/2426711" target="_blank" class="icon-stack-overflow" title="stackoverflow"></a>
+		
+		
+		<a href="https://twitter.com/amateuros" target="_blank" class="icon-twitter" title="twitter"></a>
 		
 		
 		
+		<a href="https://www.linkedin.com/in/denglee" target="_blank" class="icon-linkedin" title="linkedin"></a>
 		
+		
+		<a href="https://www.douban.com/people/AvatarJC" target="_blank" class="icon-douban" title="豆瓣"></a>
+		
+		
+		<a href="https://www.zhihu.com/people/yibaini" target="_blank" class="icon-zhihu" title="知乎"></a>
 		
 		
 		
@@ -445,6 +490,18 @@ $(document).ready(function(){
 </script>
 
 
+
+<script type="text/javascript">
+  var duoshuoQuery = {short_name:"yibaini"};
+  (function() {
+    var ds = document.createElement('script');
+    ds.type = 'text/javascript';ds.async = true;
+    ds.src = '//static.duoshuo.com/embed.js';
+    ds.charset = 'UTF-8';
+    (document.getElementsByTagName('head')[0] 
+    || document.getElementsByTagName('body')[0]).appendChild(ds);
+  })();
+</script> 
 
 
 
