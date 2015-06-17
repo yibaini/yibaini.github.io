@@ -81,6 +81,77 @@
         <header class="article-info clearfix">
   <h1 itemprop="name">
     
+      <a href="/2015/06/18/memory-hole-and-memory-leak-thought/" title="一个内存空洞问题引发的思考" itemprop="url">一个内存空洞问题引发的思考</a>
+  </h1>
+  <p class="article-author">By
+       
+		<a href="/about" title="yibaini" target="_blank" itemprop="author">yibaini</a>
+		
+  <p class="article-time">
+    <time datetime="2015-06-17T17:59:52.000Z" itemprop="datePublished"> 发表于 2015-06-18</time>
+    
+  </p>
+</header>
+    <div class="article-content">
+        
+        <p><strong><code>背景</code></strong>：<br>最近遇到一个问题，现象是主备反复倒换（产品的一个测试场景，对应到进程内多个线程反复起停），进程内存占用持续上涨直到系统OOM。</p>
+<hr>
+<p>从操作步骤及现象来看，第一感觉是有内存泄漏，但是内存相关问题定位一般都比较棘手。可能由于近期代码做了比较大变动（<a href="http://v2ex.io/2015/05/31/consensus-algorithm">日志优化</a>），虽然无法确认是近期优化引入的问题，临近过点，大家压力都还是蛮大的。经过几天的不懈努力，问题终于解决，期间把内存相关知识又过了一遍，收获还是蛮大的。</p>
+<h2 id="分析思路：">分析思路：</h2><ul>
+<li>使用工具<a href="http://valgrind.org/docs/manual/mc-manual.html#mc-manual.leaks">Valgrind</a>跑一下，做初步筛查；</li>
+<li>所有<code>malloc/free</code>配对检查，看是否有内存泄漏；</li>
+<li>使用glibc的<a href="http://man7.org/linux/man-pages/man3/malloc_stats.3.html">malloc_stats()</a>/<a href="http://man7.org/linux/man-pages/man3/mallinfo.3.html">mallocinfo()</a>/<a href="http://man7.org/linux/man-pages/man3/malloc_info.3.html">malloc_info()</a>打印内存分配统计，看是否有<code>内存空洞</code>；</li>
+<li>修改内存泄漏或者找到空洞的原因；
+        
+        
+        <p class="article-more-link">
+          
+            <a href="/2015/06/18/memory-hole-and-memory-leak-thought/#more">阅读更多</a>
+          
+       </p>
+    </div>
+    <footer class="article-footer clearfix">
+<div class="article-catetags">
+
+<div class="article-categories">
+  <span></span>
+  <a class="article-category-link" href="/categories/内存管理/">内存管理</a>
+</div>
+
+
+  <div class="article-tags">
+  
+  <span></span> <a href="/tags/内存泄漏/">内存泄漏</a><a href="/tags/内存空洞/">内存空洞</a>
+  </div>
+
+</div>
+
+
+
+
+<div class="comments-count">
+	
+	  	<span></span>
+		<a href="/2015/06/18/memory-hole-and-memory-leak-thought/#comments" class="ds-thread-count comments-count-link" data-thread-key="2015/06/18/memory-hole-and-memory-leak-thought/" data-count-type="comments">&nbsp;</a>
+	
+</div>
+
+</footer>
+
+
+    </article>
+
+
+
+
+
+
+   
+    
+    <article class="post-expand post" itemprop="articleBody"> 
+        <header class="article-info clearfix">
+  <h1 itemprop="name">
+    
       <a href="/2015/05/31/consensus-algorithm/" title="分布式一致性算法及日志实践" itemprop="url">分布式一致性算法及日志实践</a>
   </h1>
   <p class="article-author">By
@@ -221,6 +292,10 @@
 		<ul>
 		
 		  
+			<li><a href="/categories/内存管理/" title="内存管理">内存管理<sup>1</sup></a></li>
+		  
+		
+		  
 			<li><a href="/categories/分布式/" title="分布式">分布式<sup>1</sup></a></li>
 		  
 		
@@ -236,6 +311,14 @@
 <div class="tagslist">
 	<p class="asidetitle">标签</p>
 		<ul class="clearfix">
+		
+			
+				<li><a href="/tags/内存泄漏/" title="内存泄漏">内存泄漏<sup>1</sup></a></li>
+			
+		
+			
+				<li><a href="/tags/内存空洞/" title="内存空洞">内存空洞<sup>1</sup></a></li>
+			
 		
 			
 				<li><a href="/tags/分布式/" title="分布式">分布式<sup>1</sup></a></li>

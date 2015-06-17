@@ -1,0 +1,539 @@
+
+ <!DOCTYPE HTML>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  
+    <title>一个内存空洞问题引发的思考 | V2EX</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1,user-scalable=no">
+    
+    <meta name="author" content="yibaini">
+    
+
+    
+    <meta name="description" content="背景：最近遇到一个问题，现象是主备反复倒换（产品的一个测试场景，对应到进程内多个线程反复起停），进程内存占用持续上涨直到系统OOM。
+
+从操作步骤及现象来看，第一感觉是有内存泄漏，但是内存相关问题定位一般都比较棘手。可能由于近期代码做了比较大变动（日志优化），虽然无法确认是近期优化引入的问题，临近过点，大家压力都还是蛮大的。经过几天的不懈努力，问题终于解决，期间把内存相关知识又过了一遍，收获还是蛮">
+<meta property="og:type" content="article">
+<meta property="og:title" content="一个内存空洞问题引发的思考">
+<meta property="og:url" content="http://www.v2ex.io/2015/06/18/memory-hole-and-memory-leak-thought/index.html">
+<meta property="og:site_name" content="V2EX">
+<meta property="og:description" content="背景：最近遇到一个问题，现象是主备反复倒换（产品的一个测试场景，对应到进程内多个线程反复起停），进程内存占用持续上涨直到系统OOM。
+
+从操作步骤及现象来看，第一感觉是有内存泄漏，但是内存相关问题定位一般都比较棘手。可能由于近期代码做了比较大变动（日志优化），虽然无法确认是近期优化引入的问题，临近过点，大家压力都还是蛮大的。经过几天的不懈努力，问题终于解决，期间把内存相关知识又过了一遍，收获还是蛮">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="一个内存空洞问题引发的思考">
+<meta name="twitter:description" content="背景：最近遇到一个问题，现象是主备反复倒换（产品的一个测试场景，对应到进程内多个线程反复起停），进程内存占用持续上涨直到系统OOM。
+
+从操作步骤及现象来看，第一感觉是有内存泄漏，但是内存相关问题定位一般都比较棘手。可能由于近期代码做了比较大变动（日志优化），虽然无法确认是近期优化引入的问题，临近过点，大家压力都还是蛮大的。经过几天的不懈努力，问题终于解决，期间把内存相关知识又过了一遍，收获还是蛮">
+<meta name="twitter:creator" content="@amateuros">
+
+    
+    <link rel="alternative" href="/atom.xml" title="V2EX" type="application/atom+xml">
+    
+    
+    <link rel="icon" href="/img/favicon.ico">
+    
+    
+    <link rel="apple-touch-icon" href="/img/jacman.jpg">
+    <link rel="apple-touch-icon-precomposed" href="/img/jacman.jpg">
+    
+    <link rel="stylesheet" href="/css/style.css" type="text/css">
+</head>
+
+  <body>
+    <header>
+      
+<div>
+		
+			<div id="imglogo">
+				<a href="/"><img src="/img/logo.png" alt="V2EX" title="V2EX"/></a>
+			</div>
+			
+			<div id="textlogo">
+				<h1 class="site-name"><a href="/" title="V2EX">V2EX</a></h1>
+				<h2 class="blog-motto">way to explore</h2>
+			</div>
+			<div class="navbar"><a class="navbutton navmobile" href="#" title="菜单">
+			</a></div>
+			<nav class="animated">
+				<ul>
+					<ul>
+					 
+						<li><a href="/">Home</a></li>
+					
+						<li><a href="/archives">Archives</a></li>
+					
+						<li><a href="/about">About</a></li>
+					
+					<li>
+ 					
+					<form class="search" action="/search/index.html" method="get" accept-charset="utf-8">
+						<label>Search</label>
+						<input type="search" id="search" autocomplete="off" name="q" maxlength="20" placeholder="搜索" />
+					</form>
+					
+					</li>
+				</ul>
+			</nav>			
+</div>
+    </header>
+    <div id="container">
+      <div id="main" class="post" itemscope itemprop="blogPost">
+  
+	<article itemprop="articleBody"> 
+		<header class="article-info clearfix">
+  <h1 itemprop="name">
+    
+      <a href="/2015/06/18/memory-hole-and-memory-leak-thought/" title="一个内存空洞问题引发的思考" itemprop="url">一个内存空洞问题引发的思考</a>
+  </h1>
+  <p class="article-author">By
+       
+		<a href="/about" title="yibaini" target="_blank" itemprop="author">yibaini</a>
+		
+  <p class="article-time">
+    <time datetime="2015-06-17T17:59:52.000Z" itemprop="datePublished"> 发表于 2015-06-18</time>
+    
+  </p>
+</header>
+	<div class="article-content">
+		
+		<div id="toc" class="toc-article">
+			<strong class="toc-title">文章目录</strong>
+		
+			<ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#分析思路："><span class="toc-number">1.</span> <span class="toc-text">分析思路：</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Valgrind"><span class="toc-number">2.</span> <span class="toc-text">Valgrind</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#内存泄漏-内存申请/释放配对排查"><span class="toc-number">3.</span> <span class="toc-text">内存泄漏-内存申请/释放配对排查</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#内存空洞"><span class="toc-number">4.</span> <span class="toc-text">内存空洞</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#脑洞大开"><span class="toc-number">5.</span> <span class="toc-text">脑洞大开</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#几篇关于内存方面不错的资料："><span class="toc-number">6.</span> <span class="toc-text">几篇关于内存方面不错的资料：</span></a></li></ol>
+		
+		</div>
+		
+		<p><strong><code>背景</code></strong>：<br>最近遇到一个问题，现象是主备反复倒换（产品的一个测试场景，对应到进程内多个线程反复起停），进程内存占用持续上涨直到系统OOM。</p>
+<hr>
+<p>从操作步骤及现象来看，第一感觉是有内存泄漏，但是内存相关问题定位一般都比较棘手。可能由于近期代码做了比较大变动（<a href="http://v2ex.io/2015/05/31/consensus-algorithm" target="_blank" rel="external">日志优化</a>），虽然无法确认是近期优化引入的问题，临近过点，大家压力都还是蛮大的。经过几天的不懈努力，问题终于解决，期间把内存相关知识又过了一遍，收获还是蛮大的。</p>
+<h2 id="分析思路：">分析思路：</h2><ul>
+<li>使用工具<a href="http://valgrind.org/docs/manual/mc-manual.html#mc-manual.leaks" target="_blank" rel="external">Valgrind</a>跑一下，做初步筛查；</li>
+<li>所有<code>malloc/free</code>配对检查，看是否有内存泄漏；</li>
+<li>使用glibc的<a href="http://man7.org/linux/man-pages/man3/malloc_stats.3.html" target="_blank" rel="external">malloc_stats()</a>/<a href="http://man7.org/linux/man-pages/man3/mallinfo.3.html" target="_blank" rel="external">mallocinfo()</a>/<a href="http://man7.org/linux/man-pages/man3/malloc_info.3.html" target="_blank" rel="external">malloc_info()</a>打印内存分配统计，看是否有<code>内存空洞</code>；</li>
+<li>修改内存泄漏或者找到空洞的原因；<a id="more"></a>
+</li>
+</ul>
+<h2 id="Valgrind">Valgrind</h2><p>由于产品OS是定制的，Valgrind一运行，整个世界都停止了，这条路首先就被pass了。如果环境允许的话，Valgrind还是首选的方式，简介明了，能够快速检测出大部分的内存问题。<br>用法：</p>
+<ol>
+<li><a href="http://zyan.cc/post/419/" target="_blank" rel="external">Linux C/C++ 内存泄漏检测工具：Valgrind-张宴</a></li>
+<li><a href="http://www.ibm.com/developerworks/cn/linux/l-cn-valgrindanual.html#mc-manual.leaks" target="_blank" rel="external">应用 Valgrind 发现 Linux 程序的内存问题-developerworks-cn</a></li>
+<li><a href="http://valgrind.org/docs/manual/mc-manual.html" target="_blank" rel="external">Memcheck: a memory error detector-官方的</a></li>
+</ol>
+<h2 id="内存泄漏-内存申请/释放配对排查">内存泄漏-内存申请/释放配对排查</h2><p>代码使用的是glibc自带malloc/free，为了对所有的内存分配进行跟踪，我们把malloc/free分别封装下，使得可以打印分配/释放的内存地址，最后根据收集到的日志，使用一个脚本去做地址的配对检查，看是否有未释放的内存。按这个操作了结论是：没有内存泄露。该方法简单粗暴，除非之前malloc/free已经做过封装，否则改的地方会有点多。另外像<code>scandir</code>这类函数内部实现也调用了malloc，这种分配跟踪不上，配对时需要特殊考虑。</p>
+<h2 id="内存空洞">内存空洞</h2><p><strong>排除了内存泄漏，基本就只有内存空洞一种可能性了。</strong><br>关于<strong><code>内存空洞</code></strong>比较全面的解释：</p>
+<ol>
+<li><a href="http://blog.csdn.net/pennyliang/article/details/4321697" target="_blank" rel="external"> 关于内存空洞的一个解释（转自我在水木社区的一个回帖）-pennyliang</a></li>
+<li><a href="http://blog.csdn.net/baiduforum/article/details/6126337" target="_blank" rel="external">频繁分配释放内存导致的性能问题的分析-百度分享（强烈推荐）</a></li>
+<li><a href="http://blog.163.com/xychenbaihu@yeah/blog/static/132229655201210975312473/" target="_blank" rel="external">内存分配的原理__进程分配内存有两种方式，分别由两个系统调用完成：brk和mmap（不考虑共享内存）。</a></li>
+<li><a href="http://blog.163.com/xychenbaihu@yeah/blog/static/132229655201311884819764/" target="_blank" rel="external">内存分配的原理__Linux虚拟内存管理</a></li>
+</ol>
+<p>使用<a href="http://man7.org/linux/man-pages/man3/malloc_stats.3.html" target="_blank" rel="external">malloc_stats()</a>函数可以打印出glibc内存分配统计信息，包括brk和mmap内存分配情况。brk可能包括了多个arena分配区域总共分配的空间和正在使用的空间，差值基本就是已经释放的空洞内存了。<br>如果想知道堆内究竟有多少碎片，可通过<a href="http://man7.org/linux/man-pages/man3/mallinfo.3.html" target="_blank" rel="external">mallocinfo()</a>调用拿到的mallinfo 结构中的 fsmblks 、smblks 、ordblks 值得到，这些值表示不同大小区间的碎片总个数，这些区间分别是 0~80 字节，80~512 字节，512~128k 。如果 fsmblks 、 smblks 的值过大，那碎片问题可能比较严重了。<br>（<em>备注：Information is returned for only the main memory allocation area.一般为arena 0</em>）<br>也可以通过调用<a href="http://man7.org/linux/man-pages/man3/malloc_info.3.html" target="_blank" rel="external">malloc_info()</a>函数获取以XML格式表示的更为详细的包括所有arena的内存分配信息。<br>在此过程中，通过<a href="http://man7.org/linux/man-pages/man3/malloc_stats.3.html" target="_blank" rel="external">malloc_stats()</a>的输出基本可以确定有内存空洞。</p>
+<p>下面需要排查是什么导致了该空洞？</p>
+<ol>
+<li>是小内存分配太多导致有大量的碎片但是达不到<strong><code>M_TRIM_THRESHOLD</code></strong> 128k无法触发内存紧缩？</li>
+<li>还是<a href="http://www.nosqlnotes.net/archives/105" target="_blank" rel="external">GLIBC内存分配机制引发的“内存泄露”</a>这里提到的<strong>Glibc的新特性：M_MMAP_THRESHOLD可以动态调整</strong>，一次mmap之后，阈值被调高，导致后面的大块内存申请使用了brk？</li>
+</ol>
+<p>小内存问题是有一些怀疑，因为最近为了加速日志读，增加了日志的内存索引，基本都是几十字节的小内存分配并且长时间不会释放，为了验证是否是这个导致内存空洞，我们屏蔽了所有与索引相关的内存分配，使用上面的手段，还是会有内存空洞，这个原因排除。<br><strong>M_MMAP_THRESHOLD可以动态调整</strong>这个也可以被排除，因为不管是显示的设置M_MMAP_THRESHOLD值为128K还是把原本的申请的大内存块儿申请改到128K以下，都不能改变空洞的情况。</p>
+<p>曾几何时，都想用<a href="http://goog-perftools.sourceforge.net/doc/tcmalloc.html" target="_blank" rel="external">tcmalloc</a>和<a href="http://www.canonware.com/jemalloc/" target="_blank" rel="external">jemalloc</a>来替换glibc做内存分配了，但是感觉glibc不至于这么弱，而且产品这边替换这个影响还是蛮大的，所以可能性很小。<br>陷入僵局。。。</p>
+<h2 id="脑洞大开">脑洞大开</h2><p>为了证明最近的日志优化没有问题，我们通过代码开关切换到原来的使用SQLite的方案，该方案下没有索引（小块内存长期持有）；没有大块儿内存申请。按道理说应该不会有内存空洞的问题，因为上个大版本用的SQLite就没有问题。看到测试结果，突然明朗，即使回滚到SQLite的方案，还是有内存空洞。<br>经过SQLite引入方（甲方）的分析，上个大版本到现在替换了SQLite的版本：由<font color="red">3.7.17</font>升级到<font color="red">3.8.6</font>，这个我们不知情，换回3.7.17，用我们所有的日志优化方案测试，再没出现内存空洞。应该不是用法不对，SQLite的新版本在内存上还是有问题的，盲目追新还是不可取的。因为我们日志优化已经弃用SQLite了，精力有限，未作深究。</p>
+<p>内存问题，水太深，掌握原理与方法，分析定位方能水到渠成。</p>
+<h2 id="几篇关于内存方面不错的资料：">几篇关于内存方面不错的资料：</h2><ol>
+<li><a href="http://brionas.github.io/2015/01/31/jemalloc%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90-%E6%A0%B8%E5%BF%83%E6%9E%B6%E6%9E%84/" target="_blank" rel="external">jemalloc源码解析-核心架构</a></li>
+<li><a href="http://brionas.github.io/2015/01/31/jemalloc%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90-%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/" target="_blank" rel="external">jemalloc源码解析-内存管理</a></li>
+<li><a href="https://www.owent.net/2013/07/ptmalloctcmalloc%E5%92%8Cjemalloc%E5%86%85%E5%AD%98%E5%88%86%E9%85%8D%E7%AD%96%E7%95%A5%E7%A0%94%E7%A9%B6.html" target="_blank" rel="external">ptmalloc,tcmalloc和jemalloc内存分配策略研究</a></li>
+<li><a href="https://www.facebook.com/notes/facebook-engineering/scalable-memory-allocation-using-jemalloc/480222803919" target="_blank" rel="external">Scalable memory allocation using jemalloc</a></li>
+<li><a href="http://wangkaisino.blog.163.com/blog/static/1870444202011431112323846/ook-engineering/scalable-memory-allocation-using-jemalloc/480222803919" target="_blank" rel="external">更好的内存管理-jemalloc</a></li>
+<li><a href="http://bbs.cisco-club.com.cn/home.php?mod=space&amp;uid=21461&amp;do=blog&amp;id=150246/ook-engineering/scalable-memory-allocation-using-jemalloc/480222803919" target="_blank" rel="external">Linux系统下/proc/meminfo详解</a></li>
+<li><a href="http://www.tinylab.org/memory-allocation-mystery-%C2%B7-jemalloc-a/-engineering/scalable-memory-allocation-using-jemalloc/480222803919" target="_blank" rel="external">内存分配奥义·jemalloc(一)</a></li>
+<li><a href="http://www.tinylab.org/memory-allocation-mystery-%C2%B7-jemalloc-b/-engineering/scalable-memory-allocation-using-jemalloc/480222803919" target="_blank" rel="external">内存分配奥义·jemalloc(二)</a></li>
+</ol>
+  
+	</div>
+		<footer class="article-footer clearfix">
+<div class="article-catetags">
+
+<div class="article-categories">
+  <span></span>
+  <a class="article-category-link" href="/categories/内存管理/">内存管理</a>
+</div>
+
+
+  <div class="article-tags">
+  
+  <span></span> <a href="/tags/内存泄漏/">内存泄漏</a><a href="/tags/内存空洞/">内存空洞</a>
+  </div>
+
+</div>
+
+
+
+	<div class="article-share" id="share">
+	
+	  <div data-url="http://www.v2ex.io/2015/06/18/memory-hole-and-memory-leak-thought/" data-title="一个内存空洞问题引发的思考 | V2EX" data-tsina="null" class="share clearfix">
+	  </div>
+	
+	</div>
+
+
+</footer>
+
+   	       
+	</article>
+	
+<nav class="article-nav clearfix">
+ 
+
+<div class="next">
+<a href="/2015/05/31/consensus-algorithm/"  title="分布式一致性算法及日志实践">
+ <strong>下一篇：</strong><br/> 
+ <span>分布式一致性算法及日志实践
+</span>
+</a>
+</div>
+
+</nav>
+
+	
+<section id="comments" class="comment">
+	<div class="ds-thread" data-thread-key="2015/06/18/memory-hole-and-memory-leak-thought/" data-title="一个内存空洞问题引发的思考" data-url="http://www.v2ex.io/2015/06/18/memory-hole-and-memory-leak-thought/"></div>
+</section>
+
+
+</div>  
+      <div class="openaside"><a class="navbutton" href="#" title="显示侧边栏"></a></div>
+
+  <div id="toc" class="toc-aside">
+  <strong class="toc-title">文章目录</strong>
+ 
+ <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#分析思路："><span class="toc-number">1.</span> <span class="toc-text">分析思路：</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#Valgrind"><span class="toc-number">2.</span> <span class="toc-text">Valgrind</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#内存泄漏-内存申请/释放配对排查"><span class="toc-number">3.</span> <span class="toc-text">内存泄漏-内存申请/释放配对排查</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#内存空洞"><span class="toc-number">4.</span> <span class="toc-text">内存空洞</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#脑洞大开"><span class="toc-number">5.</span> <span class="toc-text">脑洞大开</span></a></li><li class="toc-item toc-level-2"><a class="toc-link" href="#几篇关于内存方面不错的资料："><span class="toc-number">6.</span> <span class="toc-text">几篇关于内存方面不错的资料：</span></a></li></ol>
+ 
+  </div>
+
+<div id="asidepart">
+<div class="closeaside"><a class="closebutton" href="#" title="隐藏侧边栏"></a></div>
+<aside class="clearfix">
+
+  
+<div class="categorieslist">
+	<p class="asidetitle">分类</p>
+		<ul>
+		
+		  
+			<li><a href="/categories/内存管理/" title="内存管理">内存管理<sup>1</sup></a></li>
+		  
+		
+		  
+			<li><a href="/categories/分布式/" title="分布式">分布式<sup>1</sup></a></li>
+		  
+		
+		  
+			<li><a href="/categories/然并卵/" title="然并卵">然并卵<sup>1</sup></a></li>
+		  
+		
+		</ul>
+</div>
+
+
+  
+<div class="tagslist">
+	<p class="asidetitle">标签</p>
+		<ul class="clearfix">
+		
+			
+				<li><a href="/tags/内存泄漏/" title="内存泄漏">内存泄漏<sup>1</sup></a></li>
+			
+		
+			
+				<li><a href="/tags/内存空洞/" title="内存空洞">内存空洞<sup>1</sup></a></li>
+			
+		
+			
+				<li><a href="/tags/分布式/" title="分布式">分布式<sup>1</sup></a></li>
+			
+		
+			
+				<li><a href="/tags/一致性/" title="一致性">一致性<sup>1</sup></a></li>
+			
+		
+			
+				<li><a href="/tags/日志/" title="日志">日志<sup>1</sup></a></li>
+			
+		
+			
+				<li><a href="/tags/Raft/" title="Raft">Raft<sup>1</sup></a></li>
+			
+		
+		</ul>
+</div>
+
+
+  
+
+<div class="doubanshow">
+<p class="asidetitle">豆瓣秀</p>
+<div>
+<script type="text/javascript" src="http://www.douban.com/service/badge/AvatarJC/?show=collection&amp;n=12&amp;columns=3&amp;hidelogo=yes&amp;hideself=yes&amp;cat=book|movie" ></script>
+</div>
+</div>
+
+
+  <div class="linkslist">
+  <p class="asidetitle">友情链接</p>
+    <ul>
+        
+          <li>
+            
+            	<a href="https://www.v2ex.com" target="_blank" title="一个神奇的网站">一个神奇的网站</a>
+            
+          </li>
+        
+          <li>
+            
+            	<a href="http://wuchong.me" target="_blank" title="Jark&#39;s Blog">Jark&#39;s Blog</a>
+            
+          </li>
+        
+    </ul>
+</div>
+
+  <div class="rsspart">
+	<a href="/atom.xml" target="_blank" title="rss">RSS 订阅</a>
+</div>
+
+</aside>
+</div>
+    </div>
+    <footer><div id="footer" >
+	
+	<div class="line">
+		<span></span>
+		<div class="author"></div>
+	</div>
+	
+	
+	<section class="info">
+		<p> V2EX = way to explore | way too extreme <br/>
+			Toward a better life，Go~</p>
+	</section>
+	 
+	<div class="social-font" class="clearfix">
+		
+		<a href="http://weibo.com/yibaini" target="_blank" class="icon-weibo" title="微博"></a>
+		
+		
+		<a href="https://github.com/yibaini" target="_blank" class="icon-github" title="github"></a>
+		
+		
+		<a href="http://stackoverflow.com/users/2426711" target="_blank" class="icon-stack-overflow" title="stackoverflow"></a>
+		
+		
+		<a href="https://twitter.com/amateuros" target="_blank" class="icon-twitter" title="twitter"></a>
+		
+		
+		
+		<a href="https://www.linkedin.com/in/denglee" target="_blank" class="icon-linkedin" title="linkedin"></a>
+		
+		
+		<a href="https://www.douban.com/people/AvatarJC" target="_blank" class="icon-douban" title="豆瓣"></a>
+		
+		
+		<a href="https://www.zhihu.com/people/yibaini" target="_blank" class="icon-zhihu" title="知乎"></a>
+		
+		
+		
+		<a href="mailto:yibaini@gmail.com" target="_blank" class="icon-email" title="Email Me"></a>
+		
+	</div>
+			
+		
+
+		<p class="copyright">
+		Powered by <a href="http://hexo.io" target="_blank" title="hexo">hexo</a> and Theme by <a href="https://github.com/wuchong/jacman" target="_blank" title="Jacman">Jacman</a> © 2015 
+		
+		<a href="/about" target="_blank" title="yibaini">yibaini</a>
+		
+		
+		</p>
+</div>
+</footer>
+    <script src="/js/jquery-2.0.3.min.js"></script>
+<script src="/js/jquery.imagesloaded.min.js"></script>
+<script src="/js/gallery.js"></script>
+
+<script type="text/javascript">
+$(document).ready(function(){ 
+  $('.navbar').click(function(){
+    $('header nav').toggleClass('shownav');
+  });
+  var myWidth = 0;
+  function getSize(){
+    if( typeof( window.innerWidth ) == 'number' ) {
+      myWidth = window.innerWidth;
+    } else if( document.documentElement && document.documentElement.clientWidth) {
+      myWidth = document.documentElement.clientWidth;
+    };
+  };
+  var m = $('#main'),
+      a = $('#asidepart'),
+      c = $('.closeaside'),
+      o = $('.openaside');
+  c.click(function(){
+    a.addClass('fadeOut').css('display', 'none');
+    o.css('display', 'block').addClass('fadeIn');
+    m.addClass('moveMain');
+  });
+  o.click(function(){
+    o.css('display', 'none').removeClass('beforeFadeIn');
+    a.css('display', 'block').removeClass('fadeOut').addClass('fadeIn');      
+    m.removeClass('moveMain');
+  });
+  $(window).scroll(function(){
+    o.css("top",Math.max(80,260-$(this).scrollTop()));
+  });
+  
+  $(window).resize(function(){
+    getSize(); 
+    if (myWidth >= 1024) {
+      $('header nav').removeClass('shownav');
+    }else{
+      m.removeClass('moveMain');
+      a.css('display', 'block').removeClass('fadeOut');
+      o.css('display', 'none');
+      
+      $('#toc.toc-aside').css('display', 'none');
+        
+    }
+  });
+});
+</script>
+
+<script type="text/javascript">
+$(document).ready(function(){ 
+  var ai = $('.article-content>iframe'),
+      ae = $('.article-content>embed'),
+      t  = $('#toc'),
+      ta = $('#toc.toc-aside'),
+      o  = $('.openaside'),
+      c  = $('.closeaside');
+  if(ai.length>0){
+    ai.wrap('<div class="video-container" />');
+  };
+  if(ae.length>0){
+   ae.wrap('<div class="video-container" />');
+  };
+  c.click(function(){
+    ta.css('display', 'block').addClass('fadeIn');
+  });
+  o.click(function(){
+    ta.css('display', 'none');
+  });
+  $(window).scroll(function(){
+    ta.css("top",Math.max(140,320-$(this).scrollTop()));
+  });
+});
+</script>
+
+
+<script type="text/javascript">
+$(document).ready(function(){ 
+  var $this = $('.share'),
+      url = $this.attr('data-url'),
+      encodedUrl = encodeURIComponent(url),
+      title = $this.attr('data-title'),
+      tsina = $this.attr('data-tsina'),
+      description = $this.attr('description');
+  var html = [
+  '<a href="#" class="overlay" id="qrcode"></a>',
+  '<div class="qrcode clearfix"><span>扫描二维码分享到微信朋友圈</span><a class="qrclose" href="#nothing"></a><strong>Loading...Please wait</strong><img id="qrcode-pic" data-src="http://s.jiathis.com/qrcode.php?url=' + encodedUrl + '"/></div>',
+  '<a href="https://www.facebook.com/sharer.php?u=' + encodedUrl + '" class="article-share-facebook" target="_blank" title="Facebook"></a>',
+  '<a href="https://twitter.com/intent/tweet?url=' + encodedUrl + '" class="article-share-twitter" target="_blank" title="Twitter"></a>',
+  '<a href="#qrcode" class="article-share-qrcode" title="微信"></a>',
+  '<a href="http://widget.renren.com/dialog/share?resourceUrl=' + encodedUrl + '&srcUrl=' + encodedUrl + '&title=' + title +'" class="article-share-renren" target="_blank" title="人人"></a>',
+  '<a href="http://service.weibo.com/share/share.php?title='+title+'&url='+encodedUrl +'&ralateUid='+ tsina +'&searchPic=true&style=number' +'" class="article-share-weibo" target="_blank" title="微博"></a>',
+  '<span title="Share to"></span>'
+  ].join('');
+  $this.append(html);
+  $('.article-share-qrcode').click(function(){
+    var imgSrc = $('#qrcode-pic').attr('data-src');
+    $('#qrcode-pic').attr('src', imgSrc);
+    $('#qrcode-pic').load(function(){
+        $('.qrcode strong').text(' ');
+    });
+  });
+});     
+</script>
+
+
+
+<script type="text/javascript">
+  var duoshuoQuery = {short_name:"yibaini"};
+  (function() {
+    var ds = document.createElement('script');
+    ds.type = 'text/javascript';ds.async = true;
+    ds.src = '//static.duoshuo.com/embed.js';
+    ds.charset = 'UTF-8';
+    (document.getElementsByTagName('head')[0] 
+    || document.getElementsByTagName('body')[0]).appendChild(ds);
+  })();
+</script> 
+
+
+
+
+
+
+
+<link rel="stylesheet" href="/fancybox/jquery.fancybox.css" media="screen" type="text/css">
+<script src="/fancybox/jquery.fancybox.pack.js"></script>
+<script type="text/javascript">
+$(document).ready(function(){ 
+  $('.article-content').each(function(i){
+    $(this).find('img').each(function(){
+      if ($(this).parent().hasClass('fancybox')) return;
+      var alt = this.alt;
+      if (alt) $(this).after('<span class="caption">' + alt + '</span>');
+      $(this).wrap('<a href="' + this.src + '" title="' + alt + '" class="fancybox"></a>');
+    });
+    $(this).find('.fancybox').each(function(){
+      $(this).attr('rel', 'article' + i);
+    });
+  });
+  if($.fancybox){
+    $('.fancybox').fancybox();
+  }
+}); 
+</script>
+
+
+
+<!-- Analytics Begin -->
+
+
+
+
+
+<!-- Analytics End -->
+
+<!-- Totop Begin -->
+
+	<div id="totop">
+	<a title="返回顶部"><img src="/img/scrollup.png"/></a>
+	</div>
+	<script src="/js/totop.js"></script>
+
+<!-- Totop End -->
+
+<!-- MathJax Begin -->
+<!-- mathjax config similar to math.stackexchange -->
+
+
+<!-- MathJax End -->
+
+<!-- Tiny_search Begin -->
+
+<!-- Tiny_search End -->
+
+  </body>
+</html>
