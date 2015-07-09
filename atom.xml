@@ -5,7 +5,7 @@
   <subtitle><![CDATA[way to explore]]></subtitle>
   <link href="/atom.xml" rel="self"/>
   <link href="http://www.v2ex.io//"/>
-  <updated>2015-06-17T18:14:15.631Z</updated>
+  <updated>2015-07-09T17:17:58.791Z</updated>
   <id>http://www.v2ex.io//</id>
   
   <author>
@@ -16,45 +16,45 @@
   <generator uri="http://hexo.io/">Hexo</generator>
   
   <entry>
-    <title><![CDATA[一个内存空洞问题引发的思考]]></title>
+    <title><![CDATA[一个内存空洞问题的定位]]></title>
     <link href="http://www.v2ex.io/2015/06/18/memory-hole-and-memory-leak-thought/"/>
     <id>http://www.v2ex.io/2015/06/18/memory-hole-and-memory-leak-thought/</id>
     <published>2015-06-17T17:59:52.000Z</published>
-    <updated>2015-06-17T18:14:15.631Z</updated>
+    <updated>2015-07-09T17:17:58.791Z</updated>
     <content type="html"><![CDATA[<p><strong><code>背景</code></strong>：<br>最近遇到一个问题，现象是主备反复倒换（产品的一个测试场景，对应到进程内多个线程反复起停），进程内存占用持续上涨直到系统OOM。</p>
 <hr>
-<p>从操作步骤及现象来看，第一感觉是有内存泄漏，但是内存相关问题定位一般都比较棘手。可能由于近期代码做了比较大变动（<a href="http://v2ex.io/2015/05/31/consensus-algorithm" target="_blank" rel="external">日志优化</a>），虽然无法确认是近期优化引入的问题，临近过点，大家压力都还是蛮大的。经过几天的不懈努力，问题终于解决，期间把内存相关知识又过了一遍，收获还是蛮大的。</p>
+<p>从操作步骤及现象来看，第一感觉是有内存泄漏，但内存相关问题定位一般都比较棘手。可能由于近期代码做了比较大变动（<a href="http://v2ex.io/2015/05/31/consensus-algorithm" target="_blank" rel="external">日志优化</a>），虽然无法确认是近期优化引入的问题，临近版本过点，压力还是蛮大。经过几天的不懈努力，问题也得以分析清楚，期间把内存相关知识又过了一遍，收获还是蛮大的，记录一下。</p>
 <h2 id="分析思路：">分析思路：</h2><ul>
 <li>使用工具<a href="http://valgrind.org/docs/manual/mc-manual.html#mc-manual.leaks" target="_blank" rel="external">Valgrind</a>跑一下，做初步筛查；</li>
 <li>所有<code>malloc/free</code>配对检查，看是否有内存泄漏；</li>
 <li>使用glibc的<a href="http://man7.org/linux/man-pages/man3/malloc_stats.3.html" target="_blank" rel="external">malloc_stats()</a>/<a href="http://man7.org/linux/man-pages/man3/mallinfo.3.html" target="_blank" rel="external">mallocinfo()</a>/<a href="http://man7.org/linux/man-pages/man3/malloc_info.3.html" target="_blank" rel="external">malloc_info()</a>打印内存分配统计，看是否有<code>内存空洞</code>；</li>
-<li>修改内存泄漏或者找到空洞的原因；<a id="more"></a>
+<li>修改验证；<a id="more"></a>
 </li>
 </ul>
-<h2 id="Valgrind">Valgrind</h2><p>由于产品OS是定制的，Valgrind一运行，整个世界都停止了，这条路首先就被pass了。如果环境允许的话，Valgrind还是首选的方式，简介明了，能够快速检测出大部分的内存问题。<br>用法：</p>
+<h2 id="工具篇之Valgrind">工具篇之Valgrind</h2><p>由于产品OS是定制的，Valgrind运行时，整个世界都停止了，定制的系统各种限制，跨部门沟通成本很高，这条路先被Pass了。如果环境允许的话，Valgrind还是首选的方式，简洁明了，能够快速检测出大部分的内存问题。<br>参考用法：</p>
 <ol>
 <li><a href="http://zyan.cc/post/419/" target="_blank" rel="external">Linux C/C++ 内存泄漏检测工具：Valgrind-张宴</a></li>
 <li><a href="http://www.ibm.com/developerworks/cn/linux/l-cn-valgrindanual.html#mc-manual.leaks" target="_blank" rel="external">应用 Valgrind 发现 Linux 程序的内存问题-developerworks-cn</a></li>
 <li><a href="http://valgrind.org/docs/manual/mc-manual.html" target="_blank" rel="external">Memcheck: a memory error detector-官方的</a></li>
 </ol>
-<h2 id="内存泄漏-内存申请/释放配对排查">内存泄漏-内存申请/释放配对排查</h2><p>代码使用的是glibc自带malloc/free，为了对所有的内存分配进行跟踪，我们把malloc/free分别封装下，使得可以打印分配/释放的内存地址，最后根据收集到的日志，使用一个脚本去做地址的配对检查，看是否有未释放的内存。按这个操作了结论是：没有内存泄露。该方法简单粗暴，除非之前malloc/free已经做过封装，否则改的地方会有点多。另外像<code>scandir</code>这类函数内部实现也调用了malloc，这种分配跟踪不上，配对时需要特殊考虑。</p>
-<h2 id="内存空洞">内存空洞</h2><p><strong>排除了内存泄漏，基本就只有内存空洞一种可能性了。</strong><br>关于<strong><code>内存空洞</code></strong>比较全面的解释：</p>
+<h2 id="内存申请/释放配对检查">内存申请/释放配对检查</h2><p>代码使用了glibc自带malloc/free，为了对所有的内存分配进行跟踪，我们对malloc/free进行了封装，可以打印分配/释放的内存地址，最后根据收集到的日志，使用脚本去做地址的配对检查，看是否有未释放的内存。按这个操作了结论是：没有内存泄露。该方法简单粗暴，除非之前malloc/free已经做过封装，否则改的地方会有点多。另外像<code>scandir</code>这类函数内部实现也调用了malloc，这种分配跟踪不上，配对时需要特殊考虑。</p>
+<h2 id="内存空洞/碎片">内存空洞/碎片</h2><p><strong>排除了内存泄漏，基本就只有内存空洞一种可能性了。</strong><br>关于<strong><code>内存空洞</code></strong>比较全面的解释：</p>
 <ol>
 <li><a href="http://blog.csdn.net/pennyliang/article/details/4321697" target="_blank" rel="external"> 关于内存空洞的一个解释（转自我在水木社区的一个回帖）-pennyliang</a></li>
 <li><a href="http://blog.csdn.net/baiduforum/article/details/6126337" target="_blank" rel="external">频繁分配释放内存导致的性能问题的分析-百度分享（强烈推荐）</a></li>
 <li><a href="http://blog.163.com/xychenbaihu@yeah/blog/static/132229655201210975312473/" target="_blank" rel="external">内存分配的原理__进程分配内存有两种方式，分别由两个系统调用完成：brk和mmap（不考虑共享内存）。</a></li>
 <li><a href="http://blog.163.com/xychenbaihu@yeah/blog/static/132229655201311884819764/" target="_blank" rel="external">内存分配的原理__Linux虚拟内存管理</a></li>
 </ol>
-<p>使用<a href="http://man7.org/linux/man-pages/man3/malloc_stats.3.html" target="_blank" rel="external">malloc_stats()</a>函数可以打印出glibc内存分配统计信息，包括brk和mmap内存分配情况。brk可能包括了多个arena分配区域总共分配的空间和正在使用的空间，差值基本就是已经释放的空洞内存了。<br>如果想知道堆内究竟有多少碎片，可通过<a href="http://man7.org/linux/man-pages/man3/mallinfo.3.html" target="_blank" rel="external">mallocinfo()</a>调用拿到的mallinfo 结构中的 fsmblks 、smblks 、ordblks 值得到，这些值表示不同大小区间的碎片总个数，这些区间分别是 0~80 字节，80~512 字节，512~128k 。如果 fsmblks 、 smblks 的值过大，那碎片问题可能比较严重了。<br>（<em>备注：Information is returned for only the main memory allocation area.一般为arena 0</em>）<br>也可以通过调用<a href="http://man7.org/linux/man-pages/man3/malloc_info.3.html" target="_blank" rel="external">malloc_info()</a>函数获取以XML格式表示的更为详细的包括所有arena的内存分配信息。<br>在此过程中，通过<a href="http://man7.org/linux/man-pages/man3/malloc_stats.3.html" target="_blank" rel="external">malloc_stats()</a>的输出基本可以确定有内存空洞。</p>
+<p>使用<a href="http://man7.org/linux/man-pages/man3/malloc_stats.3.html" target="_blank" rel="external">malloc_stats()</a>函数可以打印出glibc内存分配统计信息，包括brk和mmap内存分配情况。brk可能包括了多个arena分配区域总共分配的空间和正在使用的空间，差值基本就是已经释放的空洞内存了。<br>如果想知道堆内究竟有多少碎片，可通过<a href="http://man7.org/linux/man-pages/man3/mallinfo.3.html" target="_blank" rel="external">mallocinfo()</a>调用拿到的mallinfo 结构中的 fsmblks 、smblks 、ordblks 值得到，这些值表示不同大小区间的碎片总个数，这些区间分别是 0~80 字节，80~512 字节，512~128k 。如果 fsmblks 、 smblks 的值过大，那碎片问题可能比较严重了。<br>（<em>备注：Information is returned for only the main memory allocation area.一般为arena 0</em>）<br>也可以通过调用<a href="http://man7.org/linux/man-pages/man3/malloc_info.3.html" target="_blank" rel="external">malloc_info()</a>函数获取以XML格式表示的更为详细的包括所有arena的内存分配信息。<br>通过<a href="http://man7.org/linux/man-pages/man3/malloc_stats.3.html" target="_blank" rel="external">malloc_stats()</a>的输出我们基本可以确定有内存空洞。</p>
 <p>下面需要排查是什么导致了该空洞？</p>
 <ol>
-<li>是小内存分配太多导致有大量的碎片但是达不到<strong><code>M_TRIM_THRESHOLD</code></strong> 128k无法触发内存紧缩？</li>
+<li>是小内存分配太多导致有大量的碎片但是达不到<strong><code>M_TRIM_THRESHOLD</code></strong> 128k无法触发内存内存紧缩？</li>
 <li>还是<a href="http://www.nosqlnotes.net/archives/105" target="_blank" rel="external">GLIBC内存分配机制引发的“内存泄露”</a>这里提到的<strong>Glibc的新特性：M_MMAP_THRESHOLD可以动态调整</strong>，一次mmap之后，阈值被调高，导致后面的大块内存申请使用了brk？</li>
 </ol>
-<p>小内存问题是有一些怀疑，因为最近为了加速日志读，增加了日志的内存索引，基本都是几十字节的小内存分配并且长时间不会释放，为了验证是否是这个导致内存空洞，我们屏蔽了所有与索引相关的内存分配，使用上面的手段，还是会有内存空洞，这个原因排除。<br><strong>M_MMAP_THRESHOLD可以动态调整</strong>这个也可以被排除，因为不管是显示的设置M_MMAP_THRESHOLD值为128K还是把原本的申请的大内存块儿申请改到128K以下，都不能改变空洞的情况。</p>
-<p>曾几何时，都想用<a href="http://goog-perftools.sourceforge.net/doc/tcmalloc.html" target="_blank" rel="external">tcmalloc</a>和<a href="http://www.canonware.com/jemalloc/" target="_blank" rel="external">jemalloc</a>来替换glibc做内存分配了，但是感觉glibc不至于这么弱，而且产品这边替换这个影响还是蛮大的，所以可能性很小。<br>陷入僵局。。。</p>
-<h2 id="脑洞大开">脑洞大开</h2><p>为了证明最近的日志优化没有问题，我们通过代码开关切换到原来的使用SQLite的方案，该方案下没有索引（小块内存长期持有）；没有大块儿内存申请。按道理说应该不会有内存空洞的问题，因为上个大版本用的SQLite就没有问题。看到测试结果，突然明朗，即使回滚到SQLite的方案，还是有内存空洞。<br>经过SQLite引入方（甲方）的分析，上个大版本到现在替换了SQLite的版本：由<font color="red">3.7.17</font>升级到<font color="red">3.8.6</font>，这个我们不知情，换回3.7.17，用我们所有的日志优化方案测试，再没出现内存空洞。应该不是用法不对，SQLite的新版本在内存上还是有问题的，盲目追新还是不可取的。因为我们日志优化已经弃用SQLite了，精力有限，未作深究。</p>
-<p>内存问题，水太深，掌握原理与方法，分析定位方能水到渠成。</p>
+<p>起初对小内存太多有些怀疑，最近为了加速日志读，增加了日志内存索引，基本都是几十字节的小内存分配且长时间不会释放，为了验证是否是这个导致内存空洞，我们屏蔽了所有与索引相关的内存分配，使用上面的手段发现还是会有内存空洞，跟小内存关系好像不大。。<br><strong>M_MMAP_THRESHOLD可以动态调整</strong>这个也可以被排除，因为不管是显示的设置M_MMAP_THRESHOLD值为128K还是把原本的申请的大内存块儿申请改到128K以下，都不能改变空洞的情况。</p>
+<p>网上有说法讲jemalloc等优秀的开源实现是内存碎片的救命稻草，当时都想用<a href="http://goog-perftools.sourceforge.net/doc/tcmalloc.html" target="_blank" rel="external">tcmalloc</a>和<a href="http://www.canonware.com/jemalloc/" target="_blank" rel="external">jemalloc</a>来替换glibc做内存分配了，但是glibc这么广泛的使用应该不至于这么弱，而且产品这边替换这个影响还是蛮大的，所以替换的可能性很小。</p>
+<h2 id="反证之脑洞大开">反证之脑洞大开</h2><p>为了证明最近的日志优化没有问题，我们通过代码开关切换到原来的使用SQLite的方案，该方案下没有索引（小块内存长期持有）；没有大块儿内存申请。按道理说应该不会有内存空洞的问题，因为上个大版本用的SQLite就没有问题。看到测试结果，已经比较明朗：即使回滚到SQLite的方案，还是有内存空洞。<br>经过SQLite引入方的分析，上个大版本到现在替换了SQLite的版本：由<font color="red">3.7.17</font>升级到<font color="red">3.8.6</font>，这个改动我们事先并不知情，所以也没有往这方面想过，测试换回老的3.7.17版本，再用<br>日志优化方案测试，无内存空洞问题。应该不是用法不对，SQLite的新版本在内存处理可能上还是有问题的，盲目追新有风险。因为我们日志优化已经弃用SQLite了，精力有限，未作深究。</p>
+<p>内存问题，有的时候水蛮深，但是掌握内存布局及工作原理，分析定位方能如丝般顺滑:)</p>
 <h2 id="几篇关于内存方面不错的资料：">几篇关于内存方面不错的资料：</h2><ol>
 <li><a href="http://brionas.github.io/2015/01/31/jemalloc%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90-%E6%A0%B8%E5%BF%83%E6%9E%B6%E6%9E%84/" target="_blank" rel="external">jemalloc源码解析-核心架构</a></li>
 <li><a href="http://brionas.github.io/2015/01/31/jemalloc%E6%BA%90%E7%A0%81%E8%A7%A3%E6%9E%90-%E5%86%85%E5%AD%98%E7%AE%A1%E7%90%86/" target="_blank" rel="external">jemalloc源码解析-内存管理</a></li>
@@ -65,16 +65,17 @@
 <li><a href="http://www.tinylab.org/memory-allocation-mystery-%C2%B7-jemalloc-a/-engineering/scalable-memory-allocation-using-jemalloc/480222803919" target="_blank" rel="external">内存分配奥义·jemalloc(一)</a></li>
 <li><a href="http://www.tinylab.org/memory-allocation-mystery-%C2%B7-jemalloc-b/-engineering/scalable-memory-allocation-using-jemalloc/480222803919" target="_blank" rel="external">内存分配奥义·jemalloc(二)</a></li>
 </ol>
+<p>—EOF—</p>
 ]]></content>
     <summary type="html">
     <![CDATA[<p><strong><code>背景</code></strong>：<br>最近遇到一个问题，现象是主备反复倒换（产品的一个测试场景，对应到进程内多个线程反复起停），进程内存占用持续上涨直到系统OOM。</p>
 <hr>
-<p>从操作步骤及现象来看，第一感觉是有内存泄漏，但是内存相关问题定位一般都比较棘手。可能由于近期代码做了比较大变动（<a href="http://v2ex.io/2015/05/31/consensus-algorithm">日志优化</a>），虽然无法确认是近期优化引入的问题，临近过点，大家压力都还是蛮大的。经过几天的不懈努力，问题终于解决，期间把内存相关知识又过了一遍，收获还是蛮大的。</p>
+<p>从操作步骤及现象来看，第一感觉是有内存泄漏，但内存相关问题定位一般都比较棘手。可能由于近期代码做了比较大变动（<a href="http://v2ex.io/2015/05/31/consensus-algorithm">日志优化</a>），虽然无法确认是近期优化引入的问题，临近版本过点，压力还是蛮大。经过几天的不懈努力，问题也得以分析清楚，期间把内存相关知识又过了一遍，收获还是蛮大的，记录一下。</p>
 <h2 id="分析思路：">分析思路：</h2><ul>
 <li>使用工具<a href="http://valgrind.org/docs/manual/mc-manual.html#mc-manual.leaks">Valgrind</a>跑一下，做初步筛查；</li>
 <li>所有<code>malloc/free</code>配对检查，看是否有内存泄漏；</li>
 <li>使用glibc的<a href="http://man7.org/linux/man-pages/man3/malloc_stats.3.html">malloc_stats()</a>/<a href="http://man7.org/linux/man-pages/man3/mallinfo.3.html">mallocinfo()</a>/<a href="http://man7.org/linux/man-pages/man3/malloc_info.3.html">malloc_info()</a>打印内存分配统计，看是否有<code>内存空洞</code>；</li>
-<li>修改内存泄漏或者找到空洞的原因；]]>
+<li>修改验证；]]>
     
     </summary>
     
@@ -91,16 +92,13 @@
     <link href="http://www.v2ex.io/2015/05/31/consensus-algorithm/"/>
     <id>http://www.v2ex.io/2015/05/31/consensus-algorithm/</id>
     <published>2015-05-31T05:55:23.000Z</published>
-    <updated>2015-06-12T18:02:10.440Z</updated>
+    <updated>2015-07-09T17:39:42.967Z</updated>
     <content type="html"><![CDATA[<blockquote>
-<p><strong>背景</strong>：<br>与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年之久，目前还在持续，版本无穷无尽啊…啊…啊…</p>
+<p><strong>背景</strong>：<br>作为合作方与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年。目前合作还在继续，多个产品版本不断迭代。</p>
 </blockquote>
 <hr>
-<blockquote>
-<p>Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。</p>
-</blockquote>
-<p>关于一致性算法的应用场景，<a href="http://www.weibo.com/timyang" target="_blank" rel="external">@Tim Yang</a>在博文<a href="http://timyang.net/distributed/paxos-scenarios/" target="_blank" rel="external">Paxos在大型系统中常见的应用场景</a>有详细的总结，个人理解数据一致性保证的根基是<font color="red "><strong>带Commit语义的日志的一致性。</strong></font> ，数据的一致性基于快照以及日志重放来保证，像 <a href="https://zookeeper.apache.org/" target="_blank" rel="external">ZooKeeper™</a> 就是这么做的，和传统数据库由Write-Ahead Log机制来保证事物的原理是类似的。</p>
-<h2 id="一致性算法">一致性算法</h2><h3 id="方案设计(概述)">方案设计(概述)</h3><p>当初做设计时调研了无主的 <a href="https://www.cs.cmu.edu/~dga/papers/epaxos-sosp2013.pdf" target="_blank" rel="external">e-Paxos</a>(<a href="https://github.com/efficient/epaxos" target="_blank" rel="external">Github</a>)、广泛应用的<a href="https://zookeeper.apache.org/" target="_blank" rel="external">ZooKeeper™</a>、以及当时刚被RedHat收购的<a href="http://ceph.com/" target="_blank" rel="external">Ceph</a>/<a href="https://ceph.com/community/monitors-and-paxos-a-chat-with-joao/" target="_blank" rel="external">Monitors and Paxos, a chat with Joao Ceph</a>，还有一个就是某个产品已经实现的一个方案，看了源码，可以认为是Ceph Monitor的C语言版本，但是实现的比较拙劣，性能比较差，这个后面再讲。<br>通过几番与合作部门沟通，<font color="red"> <strong>我们确定最终的方案为优化的Multi-Paxos有主方案，并且选主由业务来做</strong> （<em>坑，后来的实践证明，这是一个严重失误，不做选主产生了很多问题</em>）。</font><br><a id="more"></a><br><strong>角色设计：</strong></p>
+<p>Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。<br>关于一致性算法的应用场景，<a href="http://www.weibo.com/timyang" target="_blank" rel="external">@Tim Yang</a>在博文<a href="http://timyang.net/distributed/paxos-scenarios/" target="_blank" rel="external">Paxos在大型系统中常见的应用场景</a>有详细的总结，个人理解数据一致性保证的根基是<font color="red "><strong>带Commit语义的日志的一致性。</strong></font> ，数据的一致性基于快照以及日志重放来保证，像 <a href="https://zookeeper.apache.org/" target="_blank" rel="external">ZooKeeper™</a> 就是这么做的，和传统数据库由Write-Ahead Log机制来保证事物的原理是类似的。</p>
+<h2 id="一致性算法">一致性算法</h2><h3 id="方案设计(概述)">方案设计(概述)</h3><p>当初做设计时调研了无主的 <a href="https://www.cs.cmu.edu/~dga/papers/epaxos-sosp2013.pdf" target="_blank" rel="external">e-Paxos</a>(<a href="https://github.com/efficient/epaxos" target="_blank" rel="external">Github</a>)、广泛应用的<a href="https://zookeeper.apache.org/" target="_blank" rel="external">ZooKeeper™</a>、以及当时刚被RedHat收购的<a href="http://ceph.com/" target="_blank" rel="external">Ceph</a>/<a href="https://ceph.com/community/monitors-and-paxos-a-chat-with-joao/" target="_blank" rel="external">Monitors and Paxos, a chat with Joao Ceph</a>，还有一个就是某个产品已经实现的一个方案，看了源码，可以认为是Ceph Monitor的C语言版本，但是实现的比较拙劣，性能比较差，这个后面再讲。<br>通过几番与合作部门沟通，<font color="red"> <strong>确定最终的方案为优化的Multi-Paxos有主方案，但是选主业务要求来做</strong> （<em>坑，后来的实践证明，这是一个严重失误，不做选主产生了很多问题</em>）。</font><br><a id="more"></a><br><strong>角色设计：</strong></p>
 <ul>
 <li>Leader（Master），与上层同主，负责处理所有上层业务读写操作</li>
 <li>Slave（Acceptor），参与协商，并同步应用日志到本节点上层业务</li>
@@ -133,24 +131,25 @@
 <blockquote>
 <p>测试环境日志存储在非独立物理磁盘，从6块盘各划出一部分空间组软RAID 1，定制IO栈、驱动，平均IO时延在90ms左右，测试整体环境不太理想，上面的数据并不好看。</p>
 </blockquote>
-<h2 id="日志实践">日志实践</h2><p>关于日志，因为要保证一致性，所以必须同步落盘，在网络时延几乎可以忽略不计的情况下，<font color="red"><strong>日志落盘耗费的时间几乎就是所有的耗时</strong></font>，这块儿我们踩了大坑，甲方（我们私下自称乙方）拍下采用SQLite作为一致性日志的存储介质(之前我们使用的是leveldb，写性能要好不少，后来测试表明也不适合用作日志存储）。</p>
+<h2 id="日志实践">日志实践</h2><p>关于日志，因为要保证一致性，所以必须同步落盘，在网络时延几乎可以忽略不计的情况下，<font color="red"><strong>日志落盘耗费的时间几乎就是所有的耗时</strong></font>，这块儿我们踩了大坑，对方拍下采用SQLite作为一致性日志的存储介质(之前用的是leveldb，写性能要好不少，后来IO测试表明也不适合用作日志存储）。</p>
 <p>起初没有任何性能问题，因为业务压力不大，而且日志写的是SSD。但是当产品<strong>A</strong>从某个版本开始性能问题凸显，后来才知道配置数据库为了提升可靠性变更了存储方案：</p>
 <blockquote>
-<p>从原来的写SSD改为写6块盘组的软RAID1（6块盘中有SSD也有SAS盘，且都是各自从物理盘上划分一块空间虚拟出来，非独立物理磁盘），没错，是软RAID1，混合了SSD与SAS盘，总之是慢出你想象，经常是每写一次日志（一次SQLite插入/更新）耗时30s+… 当一个个致命问题单砸过来的时候，心中一万只草泥马奔腾而过啊…</p>
+<p>从原来的写SSD改为写6块盘组的软RAID1（6块盘中有SSD也有SAS盘，且都是各自从物理盘上划分一块空间虚拟出来，非独立物理磁盘），混合了SSD与SAS盘的软RAID1，尤其是SAS盘，IO时延波动较大，磁盘大压力时常有（一次SQLite插入/更新）耗时30s+…惊愕了</p>
 </blockquote>
-<p>通过大量的实验以及测试分析，使用IO路径模块同事提供的手段，抓取每次写日志时产生的IO情况，最后发现如果使用SQLite，且以WAL模式打开使用，它的check-point机制会产生大量的串行读写IO，二三十个都不稀奇，而且从IO统计数据来看，单个IO的时延有三四秒以上的（这个也比较恐怖，不带这样高端的，都不好意思说），根因确定。<font color="red"><strong>事实证明SQLite极不宜用作日志存储。</strong></font></p>
-<p>最后的解决方案是：<font color="red"><strong>设计一套新的日志方案，直接写文件，IO要可控</strong></font>。<br>参考ZooKeeper、SQLite的WAL格式、MongoDB、Redis，我们设计了一套适用于目前方案的日志格式以及读写层代码，保证大多数情况下的日志写IO控制在1个左右，文件系统自身导致的少量多余IO目前还无法控制，日志写速度有了质的提升，根据压力不同总体提升在两倍到几十倍不等。如果能用上高大上的NVDIMM保电内存，再异步刷盘，速度还有很大提升空间。</p>
+<p>通过大量测试分析，使用IO路径模块同事提供的手段，抓取每次写日志时产生的IO情况，结论是：如果使用SQLite且以WAL模式打开，它的check-point机制会产生大量的串行读写IO，二三十个都不稀奇，而且从IO统计数据来看，单个IO的时延有三四秒以上的（这个也比较恐怖，但是IO路径涉及多个团队且都不对IO响应时延有任何承诺…），根因基本确定。<font color="red"><strong>事实证明SQLite极不宜用作日志存储。</strong></font></p>
+<p>最后的解决方案是：<font color="red"><strong>设计一套新的日志方案，直接写文件，IO要可控</strong></font>。<br>参考ZooKeeper、SQLite的WAL格式、MongoDB、Redis，我们设计了一套适用于目前算法流程日志方案，实现了新的日志持久化层，保证大多数情况下的日志写IO控制在1个左右，文件系统自身导致的少量多余IO目前还无法控制，日志写速度有了质的提升，根据磁盘压力波动情况总体性能提升在两倍到几十倍不等。</p>
 <blockquote>
 <p>前面提到的某个产品实现的版本，性能不是太好，从源码来看，每个决议的日志会对应一个独立日志文件，猜测也是IO数比较多导致的。 </p>
 </blockquote>
 <h2 id="经验总结：">经验总结：</h2><ol>
-<li>定制日志文件，并且日志文件预分配大小，<em>fflush</em>之后使用<em>fdatasync</em>刷盘，可以减少一次由于文件大小改变时元数据更新产生的写IO；</li>
+<li>定制日志格式，并且日志文件预分配大小，<em>fflush</em>之后使用<em>fdatasync</em>刷盘，可以减少一次由于文件大小改变时元数据更新（atime、mtime等）产生的写IO；</li>
 <li>能合并写的数据，尽量一次写，比如文件头和第一条日志；</li>
 <li>日志增加完整性校验；</li>
-<li>软RAID少用，尤其是未掌握其运行机理的情况下。</li>
+<li>软RAID在产品中使用欠妥，除了问题没有人能HOLD住，尤其是未掌握其运行机理的情况下；</li>
+<li>最后最重要日志使用单独物理盘存储，不和其他业务共享。</li>
 </ol>
 <p>从原理上来讲，Paxos只适用于保证类似配置数据这样对时间不敏感数据的一致性，状态数据就算了，性能上不去。</p>
-<h2 id="后记">后记</h2><p>最后，如果重新来过，选主是绝对不能少的。近两年新出的 <a href="http://raftconsensus.github.io/" target="_blank" rel="external"><strong>Raft</strong></a> 算法看起来比较好理解，简单也是其最大的亮点，持续关注<font color="red"><strong>:)</strong></font></p>
+<h2 id="后记">后记</h2><p>最后，如果重新来过，个人觉得选主不能少，从源头上控制日志最新最全，可以降大大低后面流程的复杂度。近两年新出的 <a href="http://raftconsensus.github.io/" target="_blank" rel="external"><strong>Raft</strong></a> 算法看起来比较好理解，简单也是其最大的亮点，持续关注<font color="red"><strong>:)</strong></font></p>
 <p><strong>几篇不错的资料：</strong></p>
 <ol>
 <li><a href="http://www.thinkingyu.com/articles/Raft/" target="_blank" rel="external">Raft一致性算法分析与总结</a> （差不多为论文中文版）</li>
@@ -163,14 +162,11 @@
 ]]></content>
     <summary type="html">
     <![CDATA[<blockquote>
-<p><strong>背景</strong>：<br>与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年之久，目前还在持续，版本无穷无尽啊…啊…啊…</p>
+<p><strong>背景</strong>：<br>作为合作方与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年。目前合作还在继续，多个产品版本不断迭代。</p>
 </blockquote>
 <hr>
-<blockquote>
-<p>Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。</p>
-</blockquote>
-<p>关于一致性算法的应用场景，<a href="http://www.weibo.com/timyang">@Tim Yang</a>在博文<a href="http://timyang.net/distributed/paxos-scenarios/">Paxos在大型系统中常见的应用场景</a>有详细的总结，个人理解数据一致性保证的根基是<font color="red "><strong>带Commit语义的日志的一致性。</strong></font> ，数据的一致性基于快照以及日志重放来保证，像 <a href="https://zookeeper.apache.org/">ZooKeeper™</a> 就是这么做的，和传统数据库由Write-Ahead Log机制来保证事物的原理是类似的。</p>
-<h2 id="一致性算法">一致性算法</h2><h3 id="方案设计(概述)">方案设计(概述)</h3><p>当初做设计时调研了无主的 <a href="https://www.cs.cmu.edu/~dga/papers/epaxos-sosp2013.pdf">e-Paxos</a>(<a href="https://github.com/efficient/epaxos">Github</a>)、广泛应用的<a href="https://zookeeper.apache.org/">ZooKeeper™</a>、以及当时刚被RedHat收购的<a href="http://ceph.com/">Ceph</a>/<a href="https://ceph.com/community/monitors-and-paxos-a-chat-with-joao/">Monitors and Paxos, a chat with Joao Ceph</a>，还有一个就是某个产品已经实现的一个方案，看了源码，可以认为是Ceph Monitor的C语言版本，但是实现的比较拙劣，性能比较差，这个后面再讲。<br>通过几番与合作部门沟通，<font color="red"> <strong>我们确定最终的方案为优化的Multi-Paxos有主方案，并且选主由业务来做</strong> （<em>坑，后来的实践证明，这是一个严重失误，不做选主产生了很多问题</em>）。</font><br>]]>
+<p>Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。<br>关于一致性算法的应用场景，<a href="http://www.weibo.com/timyang">@Tim Yang</a>在博文<a href="http://timyang.net/distributed/paxos-scenarios/">Paxos在大型系统中常见的应用场景</a>有详细的总结，个人理解数据一致性保证的根基是<font color="red "><strong>带Commit语义的日志的一致性。</strong></font> ，数据的一致性基于快照以及日志重放来保证，像 <a href="https://zookeeper.apache.org/">ZooKeeper™</a> 就是这么做的，和传统数据库由Write-Ahead Log机制来保证事物的原理是类似的。</p>
+<h2 id="一致性算法">一致性算法</h2><h3 id="方案设计(概述)">方案设计(概述)</h3><p>当初做设计时调研了无主的 <a href="https://www.cs.cmu.edu/~dga/papers/epaxos-sosp2013.pdf">e-Paxos</a>(<a href="https://github.com/efficient/epaxos">Github</a>)、广泛应用的<a href="https://zookeeper.apache.org/">ZooKeeper™</a>、以及当时刚被RedHat收购的<a href="http://ceph.com/">Ceph</a>/<a href="https://ceph.com/community/monitors-and-paxos-a-chat-with-joao/">Monitors and Paxos, a chat with Joao Ceph</a>，还有一个就是某个产品已经实现的一个方案，看了源码，可以认为是Ceph Monitor的C语言版本，但是实现的比较拙劣，性能比较差，这个后面再讲。<br>通过几番与合作部门沟通，<font color="red"> <strong>确定最终的方案为优化的Multi-Paxos有主方案，但是选主业务要求来做</strong> （<em>坑，后来的实践证明，这是一个严重失误，不做选主产生了很多问题</em>）。</font><br>]]>
     
     </summary>
     
@@ -191,7 +187,7 @@
     <link href="http://www.v2ex.io/2015/04/05/%E9%9B%85%E9%A6%A8%E6%8B%9B%E5%BE%85%E6%89%80/"/>
     <id>http://www.v2ex.io/2015/04/05/雅馨招待所/</id>
     <published>2015-04-05T05:55:23.000Z</published>
-    <updated>2015-06-12T18:31:47.136Z</updated>
+    <updated>2015-07-09T17:42:19.399Z</updated>
     <content type="html"><![CDATA[<p>亲爱的小伙伴们，欢迎访问<a href="http://www.v2ex.io/2015/04/05/雅馨招待所/" target="_blank" rel="external">雅馨招待所</a> ，这里会不定期发布大家息息相关的信息。感谢您的关注:)</p>
 <h2 id="微信公众号">微信公众号</h2><h3 id="Yax-inn_『雅馨招待所』">Yax-inn 『雅馨招待所』</h3><p>扫一扫关注：<br><img src="http://7vzrdf.com1.z0.glb.clouddn.com/qrcode_for_yx.jpg" alt=""><br><a id="more"></a></p>
 <h2 id="详细信息">详细信息</h2><ul>

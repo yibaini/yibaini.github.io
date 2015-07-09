@@ -81,7 +81,7 @@
         <header class="article-info clearfix">
   <h1 itemprop="name">
     
-      <a href="/2015/06/18/memory-hole-and-memory-leak-thought/" title="一个内存空洞问题引发的思考" itemprop="url">一个内存空洞问题引发的思考</a>
+      <a href="/2015/06/18/memory-hole-and-memory-leak-thought/" title="一个内存空洞问题的定位" itemprop="url">一个内存空洞问题的定位</a>
   </h1>
   <p class="article-author">By
        
@@ -96,12 +96,12 @@
         
         <p><strong><code>背景</code></strong>：<br>最近遇到一个问题，现象是主备反复倒换（产品的一个测试场景，对应到进程内多个线程反复起停），进程内存占用持续上涨直到系统OOM。</p>
 <hr>
-<p>从操作步骤及现象来看，第一感觉是有内存泄漏，但是内存相关问题定位一般都比较棘手。可能由于近期代码做了比较大变动（<a href="http://v2ex.io/2015/05/31/consensus-algorithm">日志优化</a>），虽然无法确认是近期优化引入的问题，临近过点，大家压力都还是蛮大的。经过几天的不懈努力，问题终于解决，期间把内存相关知识又过了一遍，收获还是蛮大的。</p>
+<p>从操作步骤及现象来看，第一感觉是有内存泄漏，但内存相关问题定位一般都比较棘手。可能由于近期代码做了比较大变动（<a href="http://v2ex.io/2015/05/31/consensus-algorithm">日志优化</a>），虽然无法确认是近期优化引入的问题，临近版本过点，压力还是蛮大。经过几天的不懈努力，问题也得以分析清楚，期间把内存相关知识又过了一遍，收获还是蛮大的，记录一下。</p>
 <h2 id="分析思路：">分析思路：</h2><ul>
 <li>使用工具<a href="http://valgrind.org/docs/manual/mc-manual.html#mc-manual.leaks">Valgrind</a>跑一下，做初步筛查；</li>
 <li>所有<code>malloc/free</code>配对检查，看是否有内存泄漏；</li>
 <li>使用glibc的<a href="http://man7.org/linux/man-pages/man3/malloc_stats.3.html">malloc_stats()</a>/<a href="http://man7.org/linux/man-pages/man3/mallinfo.3.html">mallocinfo()</a>/<a href="http://man7.org/linux/man-pages/man3/malloc_info.3.html">malloc_info()</a>打印内存分配统计，看是否有<code>内存空洞</code>；</li>
-<li>修改内存泄漏或者找到空洞的原因；
+<li>修改验证；
         
         
         <p class="article-more-link">
@@ -166,14 +166,11 @@
     <div class="article-content">
         
         <blockquote>
-<p><strong>背景</strong>：<br>与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年之久，目前还在持续，版本无穷无尽啊…啊…啊…</p>
+<p><strong>背景</strong>：<br>作为合作方与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年。目前合作还在继续，多个产品版本不断迭代。</p>
 </blockquote>
 <hr>
-<blockquote>
-<p>Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。</p>
-</blockquote>
-<p>关于一致性算法的应用场景，<a href="http://www.weibo.com/timyang">@Tim Yang</a>在博文<a href="http://timyang.net/distributed/paxos-scenarios/">Paxos在大型系统中常见的应用场景</a>有详细的总结，个人理解数据一致性保证的根基是<font color="red "><strong>带Commit语义的日志的一致性。</strong></font> ，数据的一致性基于快照以及日志重放来保证，像 <a href="https://zookeeper.apache.org/">ZooKeeper™</a> 就是这么做的，和传统数据库由Write-Ahead Log机制来保证事物的原理是类似的。</p>
-<h2 id="一致性算法">一致性算法</h2><h3 id="方案设计(概述)">方案设计(概述)</h3><p>当初做设计时调研了无主的 <a href="https://www.cs.cmu.edu/~dga/papers/epaxos-sosp2013.pdf">e-Paxos</a>(<a href="https://github.com/efficient/epaxos">Github</a>)、广泛应用的<a href="https://zookeeper.apache.org/">ZooKeeper™</a>、以及当时刚被RedHat收购的<a href="http://ceph.com/">Ceph</a>/<a href="https://ceph.com/community/monitors-and-paxos-a-chat-with-joao/">Monitors and Paxos, a chat with Joao Ceph</a>，还有一个就是某个产品已经实现的一个方案，看了源码，可以认为是Ceph Monitor的C语言版本，但是实现的比较拙劣，性能比较差，这个后面再讲。<br>通过几番与合作部门沟通，<font color="red"> <strong>我们确定最终的方案为优化的Multi-Paxos有主方案，并且选主由业务来做</strong> （<em>坑，后来的实践证明，这是一个严重失误，不做选主产生了很多问题</em>）。</font><br>
+<p>Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。<br>关于一致性算法的应用场景，<a href="http://www.weibo.com/timyang">@Tim Yang</a>在博文<a href="http://timyang.net/distributed/paxos-scenarios/">Paxos在大型系统中常见的应用场景</a>有详细的总结，个人理解数据一致性保证的根基是<font color="red "><strong>带Commit语义的日志的一致性。</strong></font> ，数据的一致性基于快照以及日志重放来保证，像 <a href="https://zookeeper.apache.org/">ZooKeeper™</a> 就是这么做的，和传统数据库由Write-Ahead Log机制来保证事物的原理是类似的。</p>
+<h2 id="一致性算法">一致性算法</h2><h3 id="方案设计(概述)">方案设计(概述)</h3><p>当初做设计时调研了无主的 <a href="https://www.cs.cmu.edu/~dga/papers/epaxos-sosp2013.pdf">e-Paxos</a>(<a href="https://github.com/efficient/epaxos">Github</a>)、广泛应用的<a href="https://zookeeper.apache.org/">ZooKeeper™</a>、以及当时刚被RedHat收购的<a href="http://ceph.com/">Ceph</a>/<a href="https://ceph.com/community/monitors-and-paxos-a-chat-with-joao/">Monitors and Paxos, a chat with Joao Ceph</a>，还有一个就是某个产品已经实现的一个方案，看了源码，可以认为是Ceph Monitor的C语言版本，但是实现的比较拙劣，性能比较差，这个后面再讲。<br>通过几番与合作部门沟通，<font color="red"> <strong>确定最终的方案为优化的Multi-Paxos有主方案，但是选主业务要求来做</strong> （<em>坑，后来的实践证明，这是一个严重失误，不做选主产生了很多问题</em>）。</font><br>
         
         
         <p class="article-more-link">

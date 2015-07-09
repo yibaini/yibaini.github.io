@@ -11,33 +11,24 @@
     
 
     
-    <meta name="description" content="背景：与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年之久，目前还在持续，版本无穷无尽啊…啊…啊…
+    <meta name="description" content="背景：作为合作方与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年。目前合作还在继续，多个产品版本不断迭代。
 
 
-
-Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。
-
-关于一致性算法的应用场景，@Tim Yang在博文Paxos在大型系统中常见的应用场景有详细的总结，个人理解">
+Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。关于一致性算法的应用场景，@Tim Yang在博文Paxos在大型系统中常见的应用场景有详细的总结，个人理">
 <meta property="og:type" content="article">
 <meta property="og:title" content="分布式一致性算法及日志实践">
 <meta property="og:url" content="http://www.v2ex.io/2015/05/31/consensus-algorithm/index.html">
 <meta property="og:site_name" content="V2EX">
-<meta property="og:description" content="背景：与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年之久，目前还在持续，版本无穷无尽啊…啊…啊…
+<meta property="og:description" content="背景：作为合作方与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年。目前合作还在继续，多个产品版本不断迭代。
 
 
-
-Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。
-
-关于一致性算法的应用场景，@Tim Yang在博文Paxos在大型系统中常见的应用场景有详细的总结，个人理解">
+Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。关于一致性算法的应用场景，@Tim Yang在博文Paxos在大型系统中常见的应用场景有详细的总结，个人理">
 <meta name="twitter:card" content="summary">
 <meta name="twitter:title" content="分布式一致性算法及日志实践">
-<meta name="twitter:description" content="背景：与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年之久，目前还在持续，版本无穷无尽啊…啊…啊…
+<meta name="twitter:description" content="背景：作为合作方与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年。目前合作还在继续，多个产品版本不断迭代。
 
 
-
-Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。
-
-关于一致性算法的应用场景，@Tim Yang在博文Paxos在大型系统中常见的应用场景有详细的总结，个人理解">
+Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。关于一致性算法的应用场景，@Tim Yang在博文Paxos在大型系统中常见的应用场景有详细的总结，个人理">
 <meta name="twitter:creator" content="@amateuros">
 
     
@@ -118,14 +109,11 @@ Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算�
 		</div>
 		
 		<blockquote>
-<p><strong>背景</strong>：<br>与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年之久，目前还在持续，版本无穷无尽啊…啊…啊…</p>
+<p><strong>背景</strong>：<br>作为合作方与公司某基础设施部门合作，为分布式配置数据库提供数据一致性保证，随该中间件交付多个产品，时间长达两年。目前合作还在继续，多个产品版本不断迭代。</p>
 </blockquote>
 <hr>
-<blockquote>
-<p>Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。</p>
-</blockquote>
-<p>关于一致性算法的应用场景，<a href="http://www.weibo.com/timyang" target="_blank" rel="external">@Tim Yang</a>在博文<a href="http://timyang.net/distributed/paxos-scenarios/" target="_blank" rel="external">Paxos在大型系统中常见的应用场景</a>有详细的总结，个人理解数据一致性保证的根基是<font color="red "><strong>带Commit语义的日志的一致性。</strong></font> ，数据的一致性基于快照以及日志重放来保证，像 <a href="https://zookeeper.apache.org/" target="_blank" rel="external">ZooKeeper™</a> 就是这么做的，和传统数据库由Write-Ahead Log机制来保证事物的原理是类似的。</p>
-<h2 id="一致性算法">一致性算法</h2><h3 id="方案设计(概述)">方案设计(概述)</h3><p>当初做设计时调研了无主的 <a href="https://www.cs.cmu.edu/~dga/papers/epaxos-sosp2013.pdf" target="_blank" rel="external">e-Paxos</a>(<a href="https://github.com/efficient/epaxos" target="_blank" rel="external">Github</a>)、广泛应用的<a href="https://zookeeper.apache.org/" target="_blank" rel="external">ZooKeeper™</a>、以及当时刚被RedHat收购的<a href="http://ceph.com/" target="_blank" rel="external">Ceph</a>/<a href="https://ceph.com/community/monitors-and-paxos-a-chat-with-joao/" target="_blank" rel="external">Monitors and Paxos, a chat with Joao Ceph</a>，还有一个就是某个产品已经实现的一个方案，看了源码，可以认为是Ceph Monitor的C语言版本，但是实现的比较拙劣，性能比较差，这个后面再讲。<br>通过几番与合作部门沟通，<font color="red"> <strong>我们确定最终的方案为优化的Multi-Paxos有主方案，并且选主由业务来做</strong> （<em>坑，后来的实践证明，这是一个严重失误，不做选主产生了很多问题</em>）。</font><br><a id="more"></a><br><strong>角色设计：</strong></p>
+<p>Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算法，那就是Paxos，其它的算法都是残次品。<br>关于一致性算法的应用场景，<a href="http://www.weibo.com/timyang" target="_blank" rel="external">@Tim Yang</a>在博文<a href="http://timyang.net/distributed/paxos-scenarios/" target="_blank" rel="external">Paxos在大型系统中常见的应用场景</a>有详细的总结，个人理解数据一致性保证的根基是<font color="red "><strong>带Commit语义的日志的一致性。</strong></font> ，数据的一致性基于快照以及日志重放来保证，像 <a href="https://zookeeper.apache.org/" target="_blank" rel="external">ZooKeeper™</a> 就是这么做的，和传统数据库由Write-Ahead Log机制来保证事物的原理是类似的。</p>
+<h2 id="一致性算法">一致性算法</h2><h3 id="方案设计(概述)">方案设计(概述)</h3><p>当初做设计时调研了无主的 <a href="https://www.cs.cmu.edu/~dga/papers/epaxos-sosp2013.pdf" target="_blank" rel="external">e-Paxos</a>(<a href="https://github.com/efficient/epaxos" target="_blank" rel="external">Github</a>)、广泛应用的<a href="https://zookeeper.apache.org/" target="_blank" rel="external">ZooKeeper™</a>、以及当时刚被RedHat收购的<a href="http://ceph.com/" target="_blank" rel="external">Ceph</a>/<a href="https://ceph.com/community/monitors-and-paxos-a-chat-with-joao/" target="_blank" rel="external">Monitors and Paxos, a chat with Joao Ceph</a>，还有一个就是某个产品已经实现的一个方案，看了源码，可以认为是Ceph Monitor的C语言版本，但是实现的比较拙劣，性能比较差，这个后面再讲。<br>通过几番与合作部门沟通，<font color="red"> <strong>确定最终的方案为优化的Multi-Paxos有主方案，但是选主业务要求来做</strong> （<em>坑，后来的实践证明，这是一个严重失误，不做选主产生了很多问题</em>）。</font><br><a id="more"></a><br><strong>角色设计：</strong></p>
 <ul>
 <li>Leader（Master），与上层同主，负责处理所有上层业务读写操作</li>
 <li>Slave（Acceptor），参与协商，并同步应用日志到本节点上层业务</li>
@@ -158,24 +146,25 @@ Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算�
 <blockquote>
 <p>测试环境日志存储在非独立物理磁盘，从6块盘各划出一部分空间组软RAID 1，定制IO栈、驱动，平均IO时延在90ms左右，测试整体环境不太理想，上面的数据并不好看。</p>
 </blockquote>
-<h2 id="日志实践">日志实践</h2><p>关于日志，因为要保证一致性，所以必须同步落盘，在网络时延几乎可以忽略不计的情况下，<font color="red"><strong>日志落盘耗费的时间几乎就是所有的耗时</strong></font>，这块儿我们踩了大坑，甲方（我们私下自称乙方）拍下采用SQLite作为一致性日志的存储介质(之前我们使用的是leveldb，写性能要好不少，后来测试表明也不适合用作日志存储）。</p>
+<h2 id="日志实践">日志实践</h2><p>关于日志，因为要保证一致性，所以必须同步落盘，在网络时延几乎可以忽略不计的情况下，<font color="red"><strong>日志落盘耗费的时间几乎就是所有的耗时</strong></font>，这块儿我们踩了大坑，对方拍下采用SQLite作为一致性日志的存储介质(之前用的是leveldb，写性能要好不少，后来IO测试表明也不适合用作日志存储）。</p>
 <p>起初没有任何性能问题，因为业务压力不大，而且日志写的是SSD。但是当产品<strong>A</strong>从某个版本开始性能问题凸显，后来才知道配置数据库为了提升可靠性变更了存储方案：</p>
 <blockquote>
-<p>从原来的写SSD改为写6块盘组的软RAID1（6块盘中有SSD也有SAS盘，且都是各自从物理盘上划分一块空间虚拟出来，非独立物理磁盘），没错，是软RAID1，混合了SSD与SAS盘，总之是慢出你想象，经常是每写一次日志（一次SQLite插入/更新）耗时30s+… 当一个个致命问题单砸过来的时候，心中一万只草泥马奔腾而过啊…</p>
+<p>从原来的写SSD改为写6块盘组的软RAID1（6块盘中有SSD也有SAS盘，且都是各自从物理盘上划分一块空间虚拟出来，非独立物理磁盘），混合了SSD与SAS盘的软RAID1，尤其是SAS盘，IO时延波动较大，磁盘大压力时常有（一次SQLite插入/更新）耗时30s+…惊愕了</p>
 </blockquote>
-<p>通过大量的实验以及测试分析，使用IO路径模块同事提供的手段，抓取每次写日志时产生的IO情况，最后发现如果使用SQLite，且以WAL模式打开使用，它的check-point机制会产生大量的串行读写IO，二三十个都不稀奇，而且从IO统计数据来看，单个IO的时延有三四秒以上的（这个也比较恐怖，不带这样高端的，都不好意思说），根因确定。<font color="red"><strong>事实证明SQLite极不宜用作日志存储。</strong></font></p>
-<p>最后的解决方案是：<font color="red"><strong>设计一套新的日志方案，直接写文件，IO要可控</strong></font>。<br>参考ZooKeeper、SQLite的WAL格式、MongoDB、Redis，我们设计了一套适用于目前方案的日志格式以及读写层代码，保证大多数情况下的日志写IO控制在1个左右，文件系统自身导致的少量多余IO目前还无法控制，日志写速度有了质的提升，根据压力不同总体提升在两倍到几十倍不等。如果能用上高大上的NVDIMM保电内存，再异步刷盘，速度还有很大提升空间。</p>
+<p>通过大量测试分析，使用IO路径模块同事提供的手段，抓取每次写日志时产生的IO情况，结论是：如果使用SQLite且以WAL模式打开，它的check-point机制会产生大量的串行读写IO，二三十个都不稀奇，而且从IO统计数据来看，单个IO的时延有三四秒以上的（这个也比较恐怖，但是IO路径涉及多个团队且都不对IO响应时延有任何承诺…），根因基本确定。<font color="red"><strong>事实证明SQLite极不宜用作日志存储。</strong></font></p>
+<p>最后的解决方案是：<font color="red"><strong>设计一套新的日志方案，直接写文件，IO要可控</strong></font>。<br>参考ZooKeeper、SQLite的WAL格式、MongoDB、Redis，我们设计了一套适用于目前算法流程日志方案，实现了新的日志持久化层，保证大多数情况下的日志写IO控制在1个左右，文件系统自身导致的少量多余IO目前还无法控制，日志写速度有了质的提升，根据磁盘压力波动情况总体性能提升在两倍到几十倍不等。</p>
 <blockquote>
 <p>前面提到的某个产品实现的版本，性能不是太好，从源码来看，每个决议的日志会对应一个独立日志文件，猜测也是IO数比较多导致的。 </p>
 </blockquote>
 <h2 id="经验总结：">经验总结：</h2><ol>
-<li>定制日志文件，并且日志文件预分配大小，<em>fflush</em>之后使用<em>fdatasync</em>刷盘，可以减少一次由于文件大小改变时元数据更新产生的写IO；</li>
+<li>定制日志格式，并且日志文件预分配大小，<em>fflush</em>之后使用<em>fdatasync</em>刷盘，可以减少一次由于文件大小改变时元数据更新（atime、mtime等）产生的写IO；</li>
 <li>能合并写的数据，尽量一次写，比如文件头和第一条日志；</li>
 <li>日志增加完整性校验；</li>
-<li>软RAID少用，尤其是未掌握其运行机理的情况下。</li>
+<li>软RAID在产品中使用欠妥，除了问题没有人能HOLD住，尤其是未掌握其运行机理的情况下；</li>
+<li>最后最重要日志使用单独物理盘存储，不和其他业务共享。</li>
 </ol>
 <p>从原理上来讲，Paxos只适用于保证类似配置数据这样对时间不敏感数据的一致性，状态数据就算了，性能上不去。</p>
-<h2 id="后记">后记</h2><p>最后，如果重新来过，选主是绝对不能少的。近两年新出的 <a href="http://raftconsensus.github.io/" target="_blank" rel="external"><strong>Raft</strong></a> 算法看起来比较好理解，简单也是其最大的亮点，持续关注<font color="red"><strong>:)</strong></font></p>
+<h2 id="后记">后记</h2><p>最后，如果重新来过，个人觉得选主不能少，从源头上控制日志最新最全，可以降大大低后面流程的复杂度。近两年新出的 <a href="http://raftconsensus.github.io/" target="_blank" rel="external"><strong>Raft</strong></a> 算法看起来比较好理解，简单也是其最大的亮点，持续关注<font color="red"><strong>:)</strong></font></p>
 <p><strong>几篇不错的资料：</strong></p>
 <ol>
 <li><a href="http://www.thinkingyu.com/articles/Raft/" target="_blank" rel="external">Raft一致性算法分析与总结</a> （差不多为论文中文版）</li>
@@ -221,10 +210,10 @@ Google Chubby的作者Mike Burrows说过这个世界上只有一种一致性算�
 <nav class="article-nav clearfix">
  
  <div class="prev" >
- <a href="/2015/06/18/memory-hole-and-memory-leak-thought/" title="一个内存空洞问题引发的思考">
+ <a href="/2015/06/18/memory-hole-and-memory-leak-thought/" title="一个内存空洞问题的定位">
   <strong>上一篇：</strong><br/>
   <span>
-  一个内存空洞问题引发的思考</span>
+  一个内存空洞问题的定位</span>
 </a>
 </div>
 
