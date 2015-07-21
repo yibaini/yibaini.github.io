@@ -4,26 +4,34 @@
 <head>
   <meta charset="UTF-8">
   
-    <title>【第一篇竟然是广告】雅馨招待所，空房出租 | V2EX</title>
+    <title>多线程并发读写文件的正确姿势 | V2EX</title>
     <meta name="viewport" content="width=device-width, initial-scale=1,user-scalable=no">
     
     <meta name="author" content="yibaini">
     
 
     
-    <meta name="description" content="亲爱的小伙伴们，欢迎访问雅馨招待所 ，这里会不定期发布大家息息相关的信息。感谢您的关注:)
-微信公众号Yax-inn 『雅馨招待所』扫一扫关注：">
+    <meta name="description" content="问题现象
+这几天遇到一个问题，用相同的索引(offset,length)从同一个文件fd中读取一段数据，通过CRC校验值发现偶尔有读错的情况：读到的期望CRC校验值与根据所读到数据算出来的校验值有出入，从读到数据来看，有时刚好错位了4个Bytes。
+
+问题分析
+分析日志发现竟然有多个线程并发读同一个文件fd的操作，之前设计读时没有考虑支持并发读的场景，因此也没有加锁互斥，但是Redo时的日志读与业">
 <meta property="og:type" content="article">
-<meta property="og:title" content="【第一篇竟然是广告】雅馨招待所，空房出租">
-<meta property="og:url" content="http://www.v2ex.io/2015/04/05/雅馨招待所/index.html">
+<meta property="og:title" content="多线程并发读写文件的正确姿势">
+<meta property="og:url" content="http://www.v2ex.io/2015/07/22/multi-thread-read-write/index.html">
 <meta property="og:site_name" content="V2EX">
-<meta property="og:description" content="亲爱的小伙伴们，欢迎访问雅馨招待所 ，这里会不定期发布大家息息相关的信息。感谢您的关注:)
-微信公众号Yax-inn 『雅馨招待所』扫一扫关注：">
-<meta property="og:image" content="http://7vzrdf.com1.z0.glb.clouddn.com/qrcode_for_yx.jpg">
+<meta property="og:description" content="问题现象
+这几天遇到一个问题，用相同的索引(offset,length)从同一个文件fd中读取一段数据，通过CRC校验值发现偶尔有读错的情况：读到的期望CRC校验值与根据所读到数据算出来的校验值有出入，从读到数据来看，有时刚好错位了4个Bytes。
+
+问题分析
+分析日志发现竟然有多个线程并发读同一个文件fd的操作，之前设计读时没有考虑支持并发读的场景，因此也没有加锁互斥，但是Redo时的日志读与业">
 <meta name="twitter:card" content="summary">
-<meta name="twitter:title" content="【第一篇竟然是广告】雅馨招待所，空房出租">
-<meta name="twitter:description" content="亲爱的小伙伴们，欢迎访问雅馨招待所 ，这里会不定期发布大家息息相关的信息。感谢您的关注:)
-微信公众号Yax-inn 『雅馨招待所』扫一扫关注：">
+<meta name="twitter:title" content="多线程并发读写文件的正确姿势">
+<meta name="twitter:description" content="问题现象
+这几天遇到一个问题，用相同的索引(offset,length)从同一个文件fd中读取一段数据，通过CRC校验值发现偶尔有读错的情况：读到的期望CRC校验值与根据所读到数据算出来的校验值有出入，从读到数据来看，有时刚好错位了4个Bytes。
+
+问题分析
+分析日志发现竟然有多个线程并发读同一个文件fd的操作，之前设计读时没有考虑支持并发读的场景，因此也没有加锁互斥，但是Redo时的日志读与业">
 <meta name="twitter:creator" content="@amateuros">
 
     
@@ -83,14 +91,14 @@
 		<header class="article-info clearfix">
   <h1 itemprop="name">
     
-      <a href="/2015/04/05/雅馨招待所/" title="【第一篇竟然是广告】雅馨招待所，空房出租" itemprop="url">【第一篇竟然是广告】雅馨招待所，空房出租</a>
+      <a href="/2015/07/22/multi-thread-read-write/" title="多线程并发读写文件的正确姿势" itemprop="url">多线程并发读写文件的正确姿势</a>
   </h1>
   <p class="article-author">By
        
 		<a href="/about" title="yibaini" target="_blank" itemprop="author">yibaini</a>
 		
   <p class="article-time">
-    <time datetime="2015-04-05T05:55:23.000Z" itemprop="datePublished"> 发表于 2015-04-05</time>
+    <time datetime="2015-07-21T16:42:14.000Z" itemprop="datePublished"> 发表于 2015-07-22</time>
     
   </p>
 </header>
@@ -99,27 +107,39 @@
 		<div id="toc" class="toc-article">
 			<strong class="toc-title">文章目录</strong>
 		
-			<ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#微信公众号"><span class="toc-number">1.</span> <span class="toc-text">微信公众号</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Yax-inn_『雅馨招待所』"><span class="toc-number">1.1.</span> <span class="toc-text">Yax-inn 『雅馨招待所』</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#详细信息"><span class="toc-number">2.</span> <span class="toc-text">详细信息</span></a></li></ol>
+			<ol class="toc"><li class="toc-item toc-level-3"><a class="toc-link" href="#问题现象"><span class="toc-number">1.</span> <span class="toc-text">问题现象</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#问题分析"><span class="toc-number">2.</span> <span class="toc-text">问题分析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#解决方案"><span class="toc-number">3.</span> <span class="toc-text">解决方案</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Tips:"><span class="toc-number">4.</span> <span class="toc-text">Tips:</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#参考链接："><span class="toc-number">5.</span> <span class="toc-text">参考链接：</span></a></li></ol>
 		
 		</div>
 		
-		<p>亲爱的小伙伴们，欢迎访问<a href="http://www.v2ex.io/2015/04/05/雅馨招待所/" target="_blank" rel="external">雅馨招待所</a> ，这里会不定期发布大家息息相关的信息。感谢您的关注:)</p>
-<h2 id="微信公众号">微信公众号</h2><h3 id="Yax-inn_『雅馨招待所』">Yax-inn 『雅馨招待所』</h3><p>扫一扫关注：<br><img src="http://7vzrdf.com1.z0.glb.clouddn.com/qrcode_for_yx.jpg" alt=""><br><a id="more"></a></p>
-<h2 id="详细信息">详细信息</h2><ul>
-<li>座机：029-85843958</li>
-<li>手机：13629244107</li>
-<li>地址：陕西省西安市长安区文苑南路小居安村北二街25号雅馨招待所（西北大学南校区&amp;外语学院南校区）</li>
-</ul>
+		<blockquote>
+<h3 id="问题现象">问题现象</h3></blockquote>
+<p>这几天遇到一个问题，用相同的索引<font color="red">(offset,length)</font>从同一个文件fd中读取一段数据，通过CRC校验值发现偶尔有读错的情况：读到的期望CRC校验值与根据所读到数据算出来的校验值有出入，从读到数据来看，有时刚好错位了4个Bytes。</p>
+<blockquote>
+<h3 id="问题分析">问题分析</h3></blockquote>
+<p>分析日志发现竟然有多个线程并发读同一个文件fd的操作，之前设计读时没有考虑支持并发读的场景，因此也没有加锁互斥，但是Redo时的日志读与业务异步刷盘队列满之后不断重试的日志读产生了并发干扰。</p>
+<p>根据索引到日志文件中读日志实际上有<strong>两个步骤</strong>：(1) seek到offset位置；(2) read指定长度的数据。<font color="red">这两个步骤无法保证原子性</font>。上面的问题可以肯定是由于多线程seek产生了干扰导致读到非预期的数据。<br> <a id="more"></a></p>
+<blockquote>
+<h3 id="解决方案">解决方案</h3></blockquote>
+<p>所以seek/lseek + read/write 在多个线程并发读写同一个fd会有有问题，最容易想到的解决方法是在seek/lseek+read/write的外层加锁互斥访问，这是一个方法；其实系统库提供了更简洁的方法——pread/pwrite系统调用，多线程环境下尤其好使，这个APUE里面有介绍（几年前看过，用得太少都不太记得了…Orz）<br>pread/pwrite系统调用将seek/lseek + read/write 两个步骤打包为原子操作, 读写时文件的offset不会改变，因而多个线程读写时不会产生干扰。<br>同样，多线程对同一个文件fd的并发写也可以通过pwrite来搞定。不过我们的算法日志为追加写，没有这种场景。</p>
+<blockquote>
+<h3 id="Tips:">Tips:</h3></blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="preprocessor">#<span class="keyword">define</span> _XOPEN_SOURCE 500 /*该宏需要在头文件之前定义，否则编译会有告警*/</span></span><br><span class="line"><span class="preprocessor">#<span class="keyword">include</span> &lt;unistd.h&gt;</span></span><br><span class="line"><span class="function">ssize_t <span class="title">pread</span><span class="params">(<span class="keyword">int</span> fd, <span class="keyword">void</span> *buf, size_t count, off_t offset)</span></span>;</span><br><span class="line"><span class="function">ssize_t <span class="title">pwrite</span><span class="params">(<span class="keyword">int</span> fd, <span class="keyword">const</span> <span class="keyword">void</span> *buf, size_t count, off_t offset)</span></span>;</span><br><span class="line"></span><br><span class="line">Notes:</span><br><span class="line"><span class="function">The <span class="title">pread</span><span class="params">()</span> and <span class="title">pwrite</span><span class="params">()</span> system calls are especially useful in multithreaded applications.  </span><br><span class="line">They allow multiple threads to perform I/O on the same file descriptor without being </span><br><span class="line">affected by changes to the file offset by other threads.</span></span><br></pre></td></tr></table></figure>
+<blockquote>
+<h3 id="参考链接：">参考链接：</h3></blockquote>
+<ol>
+<li><a href="http://man7.org/linux/man-pages/man2/pread.2.html" target="_blank" rel="external">pread man7</a></li>
+<li><a href="http://stackoverflow.com/questions/12411942/pread-and-pwrite-not-defined" target="_blank" rel="external">pread and pwrite not defined?</a> </li>
+</ol>
   
 	</div>
 		<footer class="article-footer clearfix">
 <div class="article-catetags">
 
-<div class="article-categories">
-  <span></span>
-  <a class="article-category-link" href="/categories/然并卵/">然并卵</a>
-</div>
 
+  <div class="article-tags">
+  
+  <span></span> <a href="/tags/多线程/">多线程</a><a href="/tags/并发I-O/">并发I/O</a>
+  </div>
 
 </div>
 
@@ -127,7 +147,7 @@
 
 	<div class="article-share" id="share">
 	
-	  <div data-url="http://www.v2ex.io/2015/04/05/雅馨招待所/" data-title="【第一篇竟然是广告】雅馨招待所，空房出租 | V2EX" data-tsina="null" class="share clearfix">
+	  <div data-url="http://www.v2ex.io/2015/07/22/multi-thread-read-write/" data-title="多线程并发读写文件的正确姿势 | V2EX" data-tsina="null" class="share clearfix">
 	  </div>
 	
 	</div>
@@ -140,20 +160,20 @@
 	
 <nav class="article-nav clearfix">
  
- <div class="prev" >
- <a href="/2015/05/31/consensus-algorithm/" title="分布式一致性算法及日志实践">
-  <strong>上一篇：</strong><br/>
-  <span>
-  分布式一致性算法及日志实践</span>
+
+<div class="next">
+<a href="/2015/06/18/memory-hole-and-memory-leak-thought/"  title="一个内存空洞问题的定位">
+ <strong>下一篇：</strong><br/> 
+ <span>一个内存空洞问题的定位
+</span>
 </a>
 </div>
-
 
 </nav>
 
 	
 <section id="comments" class="comment">
-	<div class="ds-thread" data-thread-key="2015/04/05/雅馨招待所/" data-title="【第一篇竟然是广告】雅馨招待所，空房出租" data-url="http://www.v2ex.io/2015/04/05/雅馨招待所/"></div>
+	<div class="ds-thread" data-thread-key="2015/07/22/multi-thread-read-write/" data-title="多线程并发读写文件的正确姿势" data-url="http://www.v2ex.io/2015/07/22/multi-thread-read-write/"></div>
 </section>
 
 
@@ -163,7 +183,7 @@
   <div id="toc" class="toc-aside">
   <strong class="toc-title">文章目录</strong>
  
- <ol class="toc"><li class="toc-item toc-level-2"><a class="toc-link" href="#微信公众号"><span class="toc-number">1.</span> <span class="toc-text">微信公众号</span></a><ol class="toc-child"><li class="toc-item toc-level-3"><a class="toc-link" href="#Yax-inn_『雅馨招待所』"><span class="toc-number">1.1.</span> <span class="toc-text">Yax-inn 『雅馨招待所』</span></a></li></ol></li><li class="toc-item toc-level-2"><a class="toc-link" href="#详细信息"><span class="toc-number">2.</span> <span class="toc-text">详细信息</span></a></li></ol>
+ <ol class="toc"><li class="toc-item toc-level-3"><a class="toc-link" href="#问题现象"><span class="toc-number">1.</span> <span class="toc-text">问题现象</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#问题分析"><span class="toc-number">2.</span> <span class="toc-text">问题分析</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#解决方案"><span class="toc-number">3.</span> <span class="toc-text">解决方案</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#Tips:"><span class="toc-number">4.</span> <span class="toc-text">Tips:</span></a></li><li class="toc-item toc-level-3"><a class="toc-link" href="#参考链接："><span class="toc-number">5.</span> <span class="toc-text">参考链接：</span></a></li></ol>
  
   </div>
 

@@ -5,7 +5,7 @@
   <subtitle><![CDATA[way to explore]]></subtitle>
   <link href="/atom.xml" rel="self"/>
   <link href="http://www.v2ex.io//"/>
-  <updated>2015-07-09T17:17:58.791Z</updated>
+  <updated>2015-07-21T17:15:10.416Z</updated>
   <id>http://www.v2ex.io//</id>
   
   <author>
@@ -16,11 +16,54 @@
   <generator uri="http://hexo.io/">Hexo</generator>
   
   <entry>
+    <title><![CDATA[多线程并发读写文件的正确姿势]]></title>
+    <link href="http://www.v2ex.io/2015/07/22/multi-thread-read-write/"/>
+    <id>http://www.v2ex.io/2015/07/22/multi-thread-read-write/</id>
+    <published>2015-07-21T16:42:14.000Z</published>
+    <updated>2015-07-21T17:15:10.416Z</updated>
+    <content type="html"><![CDATA[<blockquote>
+<h3 id="问题现象">问题现象</h3></blockquote>
+<p>这几天遇到一个问题，用相同的索引<font color="red">(offset,length)</font>从同一个文件fd中读取一段数据，通过CRC校验值发现偶尔有读错的情况：读到的期望CRC校验值与根据所读到数据算出来的校验值有出入，从读到数据来看，有时刚好错位了4个Bytes。</p>
+<blockquote>
+<h3 id="问题分析">问题分析</h3></blockquote>
+<p>分析日志发现竟然有多个线程并发读同一个文件fd的操作，之前设计读时没有考虑支持并发读的场景，因此也没有加锁互斥，但是Redo时的日志读与业务异步刷盘队列满之后不断重试的日志读产生了并发干扰。</p>
+<p>根据索引到日志文件中读日志实际上有<strong>两个步骤</strong>：(1) seek到offset位置；(2) read指定长度的数据。<font color="red">这两个步骤无法保证原子性</font>。上面的问题可以肯定是由于多线程seek产生了干扰导致读到非预期的数据。<br> <a id="more"></a></p>
+<blockquote>
+<h3 id="解决方案">解决方案</h3></blockquote>
+<p>所以seek/lseek + read/write 在多个线程并发读写同一个fd会有有问题，最容易想到的解决方法是在seek/lseek+read/write的外层加锁互斥访问，这是一个方法；其实系统库提供了更简洁的方法——pread/pwrite系统调用，多线程环境下尤其好使，这个APUE里面有介绍（几年前看过，用得太少都不太记得了…Orz）<br>pread/pwrite系统调用将seek/lseek + read/write 两个步骤打包为原子操作, 读写时文件的offset不会改变，因而多个线程读写时不会产生干扰。<br>同样，多线程对同一个文件fd的并发写也可以通过pwrite来搞定。不过我们的算法日志为追加写，没有这种场景。</p>
+<blockquote>
+<h3 id="Tips:">Tips:</h3></blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="preprocessor">#<span class="keyword">define</span> _XOPEN_SOURCE 500 /*该宏需要在头文件之前定义，否则编译会有告警*/</span></span><br><span class="line"><span class="preprocessor">#<span class="keyword">include</span> &lt;unistd.h&gt;</span></span><br><span class="line"><span class="function">ssize_t <span class="title">pread</span><span class="params">(<span class="keyword">int</span> fd, <span class="keyword">void</span> *buf, size_t count, off_t offset)</span></span>;</span><br><span class="line"><span class="function">ssize_t <span class="title">pwrite</span><span class="params">(<span class="keyword">int</span> fd, <span class="keyword">const</span> <span class="keyword">void</span> *buf, size_t count, off_t offset)</span></span>;</span><br><span class="line"></span><br><span class="line">Notes:</span><br><span class="line"><span class="function">The <span class="title">pread</span><span class="params">()</span> and <span class="title">pwrite</span><span class="params">()</span> system calls are especially useful in multithreaded applications.  </span><br><span class="line">They allow multiple threads to perform I/O on the same file descriptor without being </span><br><span class="line">affected by changes to the file offset by other threads.</span></span><br></pre></td></tr></table></figure>
+<blockquote>
+<h3 id="参考链接：">参考链接：</h3></blockquote>
+<ol>
+<li><a href="http://man7.org/linux/man-pages/man2/pread.2.html" target="_blank" rel="external">pread man7</a></li>
+<li><a href="http://stackoverflow.com/questions/12411942/pread-and-pwrite-not-defined" target="_blank" rel="external">pread and pwrite not defined?</a> </li>
+</ol>
+]]></content>
+    <summary type="html">
+    <![CDATA[<blockquote>
+<h3 id="问题现象">问题现象</h3></blockquote>
+<p>这几天遇到一个问题，用相同的索引<font color="red">(offset,length)</font>从同一个文件fd中读取一段数据，通过CRC校验值发现偶尔有读错的情况：读到的期望CRC校验值与根据所读到数据算出来的校验值有出入，从读到数据来看，有时刚好错位了4个Bytes。</p>
+<blockquote>
+<h3 id="问题分析">问题分析</h3></blockquote>
+<p>分析日志发现竟然有多个线程并发读同一个文件fd的操作，之前设计读时没有考虑支持并发读的场景，因此也没有加锁互斥，但是Redo时的日志读与业务异步刷盘队列满之后不断重试的日志读产生了并发干扰。</p>
+<p>根据索引到日志文件中读日志实际上有<strong>两个步骤</strong>：(1) seek到offset位置；(2) read指定长度的数据。<font color="red">这两个步骤无法保证原子性</font>。上面的问题可以肯定是由于多线程seek产生了干扰导致读到非预期的数据。<br>]]>
+    
+    </summary>
+    
+      <category term="多线程" scheme="http://www.v2ex.io/tags/%E5%A4%9A%E7%BA%BF%E7%A8%8B/"/>
+    
+      <category term="并发I/O" scheme="http://www.v2ex.io/tags/%E5%B9%B6%E5%8F%91I-O/"/>
+    
+  </entry>
+  
+  <entry>
     <title><![CDATA[一个内存空洞问题的定位]]></title>
     <link href="http://www.v2ex.io/2015/06/18/memory-hole-and-memory-leak-thought/"/>
     <id>http://www.v2ex.io/2015/06/18/memory-hole-and-memory-leak-thought/</id>
     <published>2015-06-17T17:59:52.000Z</published>
-    <updated>2015-07-09T17:17:58.791Z</updated>
+    <updated>2015-07-09T17:18:44.850Z</updated>
     <content type="html"><![CDATA[<p><strong><code>背景</code></strong>：<br>最近遇到一个问题，现象是主备反复倒换（产品的一个测试场景，对应到进程内多个线程反复起停），进程内存占用持续上涨直到系统OOM。</p>
 <hr>
 <p>从操作步骤及现象来看，第一感觉是有内存泄漏，但内存相关问题定位一般都比较棘手。可能由于近期代码做了比较大变动（<a href="http://v2ex.io/2015/05/31/consensus-algorithm" target="_blank" rel="external">日志优化</a>），虽然无法确认是近期优化引入的问题，临近版本过点，压力还是蛮大。经过几天的不懈努力，问题也得以分析清楚，期间把内存相关知识又过了一遍，收获还是蛮大的，记录一下。</p>

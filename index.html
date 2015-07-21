@@ -81,6 +81,71 @@
         <header class="article-info clearfix">
   <h1 itemprop="name">
     
+      <a href="/2015/07/22/multi-thread-read-write/" title="多线程并发读写文件的正确姿势" itemprop="url">多线程并发读写文件的正确姿势</a>
+  </h1>
+  <p class="article-author">By
+       
+		<a href="/about" title="yibaini" target="_blank" itemprop="author">yibaini</a>
+		
+  <p class="article-time">
+    <time datetime="2015-07-21T16:42:14.000Z" itemprop="datePublished"> 发表于 2015-07-22</time>
+    
+  </p>
+</header>
+    <div class="article-content">
+        
+        <blockquote>
+<h3 id="问题现象">问题现象</h3></blockquote>
+<p>这几天遇到一个问题，用相同的索引<font color="red">(offset,length)</font>从同一个文件fd中读取一段数据，通过CRC校验值发现偶尔有读错的情况：读到的期望CRC校验值与根据所读到数据算出来的校验值有出入，从读到数据来看，有时刚好错位了4个Bytes。</p>
+<blockquote>
+<h3 id="问题分析">问题分析</h3></blockquote>
+<p>分析日志发现竟然有多个线程并发读同一个文件fd的操作，之前设计读时没有考虑支持并发读的场景，因此也没有加锁互斥，但是Redo时的日志读与业务异步刷盘队列满之后不断重试的日志读产生了并发干扰。</p>
+<p>根据索引到日志文件中读日志实际上有<strong>两个步骤</strong>：(1) seek到offset位置；(2) read指定长度的数据。<font color="red">这两个步骤无法保证原子性</font>。上面的问题可以肯定是由于多线程seek产生了干扰导致读到非预期的数据。<br>
+        
+        
+        <p class="article-more-link">
+          
+            <a href="/2015/07/22/multi-thread-read-write/#more">阅读更多</a>
+          
+       </p>
+    </div>
+    <footer class="article-footer clearfix">
+<div class="article-catetags">
+
+
+  <div class="article-tags">
+  
+  <span></span> <a href="/tags/多线程/">多线程</a><a href="/tags/并发I-O/">并发I/O</a>
+  </div>
+
+</div>
+
+
+
+
+<div class="comments-count">
+	
+	  	<span></span>
+		<a href="/2015/07/22/multi-thread-read-write/#comments" class="ds-thread-count comments-count-link" data-thread-key="2015/07/22/multi-thread-read-write/" data-count-type="comments">&nbsp;</a>
+	
+</div>
+
+</footer>
+
+
+    </article>
+
+
+
+
+
+
+   
+    
+    <article class="post-expand post" itemprop="articleBody"> 
+        <header class="article-info clearfix">
+  <h1 itemprop="name">
+    
       <a href="/2015/06/18/memory-hole-and-memory-leak-thought/" title="一个内存空洞问题的定位" itemprop="url">一个内存空洞问题的定位</a>
   </h1>
   <p class="article-author">By
@@ -308,6 +373,14 @@
 <div class="tagslist">
 	<p class="asidetitle">标签</p>
 		<ul class="clearfix">
+		
+			
+				<li><a href="/tags/多线程/" title="多线程">多线程<sup>1</sup></a></li>
+			
+		
+			
+				<li><a href="/tags/并发I-O/" title="并发I/O">并发I/O<sup>1</sup></a></li>
+			
 		
 			
 				<li><a href="/tags/内存泄漏/" title="内存泄漏">内存泄漏<sup>1</sup></a></li>
